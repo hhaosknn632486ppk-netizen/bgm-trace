@@ -10,7 +10,7 @@ import sys
 from datetime import datetime, timezone
 
 from . import __version__
-from .media import TraceError, acquire, extract, ffmpeg, listening_copy, save_json
+from .media import TraceError, acquire, extract, ffmpeg, input_identity, listening_copy, save_json
 from .recognition import recognize_file, summarize
 
 
@@ -35,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     identify.add_argument("--window-seconds", type=float, default=12.)
     identify.add_argument("--max-download-mib", type=int, default=100)
     identify.add_argument("--reference", type=Path, help="Optional local reference; no automatic full-track download.")
-    identify.add_argument("--clues", choices=["auto", "always", "never"], default="auto", help="Investigate supplied source links when recognition/verification is inconclusive.")
+    identify.add_argument("--clues", choices=["auto", "always", "never"], default="auto", help="Investigate supplied source links when audio is unavailable or recognition/verification is inconclusive.")
     identify.add_argument("--source-url", action="append", default=[], help="User-supplied source link, especially for a local audio input; repeat for more links.")
     investigate = commands.add_parser("investigate", help="Read source/author/comments, or analyze a browser evidence capture.")
     investigate.add_argument("source")
@@ -63,6 +63,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _report_text(report: dict) -> str:
     lines = [f"BGM Trace {__version__}", f"Status: {report['recognition']['status']}", f"Recognition service: {report['recognition']['availability']}", ""]
+    preparation = report.get("audio_preparation", {})
+    if preparation.get("status") == "unavailable":
+        lines += [f"Audio preparation failed at: {preparation['failed_stage']}", preparation["reason"],
+                  "No fingerprint recognition or audio verification was performed.", ""]
     for item in report["recognition"]["candidates"]:
         lines += [f"{item['title']} — {item['artist']}", f"Independent windows: {item['independent_windows']}; layers: {', '.join(item['layers'])}", str(item.get("url") or ""), ""]
     for error in report.get("warnings", []):
@@ -74,8 +78,39 @@ def _report_text(report: dict) -> str:
         lines += ["", f"Source clues: {investigation['file']}; {investigation['status']}",
                   "Coverage complete: " + str(investigation["coverage_complete"]),
                   "Text leads require audio verification; read the full documents and coverage gaps."]
+    for step in report.get("next_steps", []):
+        lines.append("Next: " + step)
     lines += ["", "Candidate agreement alone does not prove the requested sound layer or composition.", "Separated music may contain speech/effects; reference-derived audio is a different artifact role."]
     return "\n".join(lines) + "\n"
+
+
+def _investigate_sources(args: argparse.Namespace, report: dict, job: Path, inconclusive: bool) -> None:
+    if not args.online or args.clues == "never" or (args.clues != "always" and not inconclusive):
+        return
+    from .clues import collect, write_report
+    sources = list(args.source_url)
+    if report["source"].get("url"):
+        sources.insert(0, report["source"]["url"])
+    if not sources:
+        report["warnings"].append("Source clues need a user-supplied link; add --source-url or use investigate.")
+    for index, url in enumerate(dict.fromkeys(sources)):
+        print("Investigating supplied source/author/comments...", file=sys.stderr)
+        try:
+            clues = collect(url)
+            name = "clues.json" if index == 0 else f"clues-{index + 1}.json"
+            write_report(clues, job / name)
+            report.setdefault("source_investigations", []).append({"file": name, "source_url": clues["source_url"], "status": clues["status"], "coverage_complete": clues["coverage_complete"]})
+        except Exception as exc:
+            # A source-reader failure must not discard the independent audio outcome.
+            report["warnings"].append(f"Source investigation failed ({type(exc).__name__}); existing evidence was retained.")
+
+
+def _finish_report(report: dict, job: Path) -> None:
+    save_json(job / "report.json", report)
+    text = _report_text(report)
+    (job / "report.txt").write_text(text, encoding="utf-8")
+    print(text, end="")
+    print(f"Artifacts: {job}")
 
 
 def identify(args: argparse.Namespace) -> int:
@@ -91,13 +126,30 @@ def identify(args: argparse.Namespace) -> int:
     if job.exists() and any(job.iterdir()):
         raise TraceError("Job directory is not empty. Choose a new directory to preserve previous results.")
     job.mkdir(parents=True, exist_ok=True)
-    report = {"schema_version": 1, "tool_version": __version__, "created_at": datetime.now(timezone.utc).isoformat(), "source": {}, "selection": {"start_seconds": args.start, "max_duration_seconds": args.duration}, "artifacts": [], "attempts": [], "warnings": []}
+    report = {"schema_version": 1, "tool_version": __version__, "created_at": datetime.now(timezone.utc).isoformat(), "source": input_identity(args.input), "selection": {"start_seconds": args.start, "max_duration_seconds": args.duration}, "artifacts": [], "attempts": [], "warnings": []}
     try:
         print("Extracting audio...", file=sys.stderr)
-        source, metadata = acquire(args.input, job, args.max_download_mib)
-        report["source"] = metadata
         prepared = job / "source.wav"
-        report["artifacts"].append(extract(source, prepared, args.start, args.duration))
+        stage = "acquire"
+        try:
+            source, metadata = acquire(args.input, job, args.max_download_mib)
+            report["source"] = metadata
+            stage = "extract"
+            report["artifacts"].append(extract(source, prepared, args.start, args.duration))
+        except Exception as exc:
+            reason = str(exc) if isinstance(exc, TraceError) else f"Audio preparation failed ({type(exc).__name__})."
+            report["audio_preparation"] = {"status": "unavailable", "failed_stage": stage, "reason": reason}
+            report["error"] = reason
+            report["recognition"] = {**summarize([]), "status": "audio_unavailable"}
+            report["next_steps"] = [
+                "Provide a playable local video/audio file or a screen recording containing system audio; check that the desired interval has sound.",
+                "Run identify on that local file in a new output directory; use --source-url to retain the original video link.",
+                "Any source/comment titles are unverified leads until the requested audio and a candidate recording can be compared.",
+            ]
+            _investigate_sources(args, report, job, inconclusive=True)
+            _finish_report(report, job)
+            return 2
+        report["audio_preparation"] = {"status": "ready"}
         if args.online and args.separate != "always":
             print("Recognizing source windows...", file=sys.stderr)
             report["attempts"] += asyncio.run(recognize_file(prepared, "source", job, args.windows, args.window_seconds))
@@ -136,26 +188,8 @@ def identify(args: argparse.Namespace) -> int:
         inconclusive = (report["recognition"]["status"] != "candidate_consensus"
                         or report["recognition"]["availability"] != "completed"
                         or ("verification" in report and not report["verification"]["evidence_passed"]))
-        if args.online and args.clues != "never" and (args.clues == "always" or inconclusive):
-            from .clues import collect, write_report
-            sources = list(args.source_url)
-            if report["source"].get("url"):
-                sources.insert(0, report["source"]["url"])
-            if not sources:
-                report["warnings"].append("Source clues need a user-supplied link; add --source-url or use investigate.")
-            for index, url in enumerate(dict.fromkeys(sources)):
-                print("Investigating supplied source/author/comments...", file=sys.stderr)
-                try:
-                    clues = collect(url)
-                    name = "clues.json" if index == 0 else f"clues-{index + 1}.json"
-                    write_report(clues, job / name)
-                    report.setdefault("source_investigations", []).append({"file": name, "source_url": clues["source_url"], "status": clues["status"], "coverage_complete": clues["coverage_complete"]})
-                except (TraceError, OSError, ValueError) as exc:
-                    report["warnings"].append(f"Source investigation failed ({type(exc).__name__}); audio artifacts were retained.")
-        save_json(job / "report.json", report)
-        (job / "report.txt").write_text(_report_text(report), encoding="utf-8")
-        print(_report_text(report), end="")
-        print(f"Artifacts: {job}")
+        _investigate_sources(args, report, job, inconclusive)
+        _finish_report(report, job)
         return 0
     except Exception as exc:
         report["error"] = str(exc) if isinstance(exc, TraceError) else type(exc).__name__

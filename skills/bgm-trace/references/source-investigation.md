@@ -1,6 +1,6 @@
 # Source, creator and comment investigation
 
-Use this fallback when fingerprint recognition does not establish the requested music, or when the user asks to inspect source clues. Start from links the human supplied. Directly linked creator profiles, sound pages and credited sources are in scope; do not turn this into an unbounded crawl of unrelated accounts.
+Use this fallback when audio cannot be acquired/decoded, fingerprint recognition does not establish the requested music, or the user asks to inspect source clues. Source-text investigation does not require a successfully downloaded video. Start from links the human supplied. Directly linked creator profiles, sound pages and credited sources are in scope; do not turn this into an unbounded crawl of unrelated accounts.
 
 ## Read the source thoroughly
 

@@ -6,7 +6,7 @@ Identify music underneath dialogue in short videos. Extract audio, compare multi
 
 This is an independent workflow implementation built on existing tools. **Source separation, audio fingerprinting, multi-window recognition, and reference correlation already exist.** See [related projects and overlap](docs/related-projects.md). This is an early release, not a new recognition model or a demonstrated replacement for every mobile recognition app.
 
-Version 0.2 adds a source-investigation fallback: when fingerprint recognition or reference verification is inconclusive, inspect the supplied video link, creator information and comment threads for leads. Public Bilibili collection is automated; other platforms have an agent/browser workflow and evidence import. **Douyin comments are not claimed to be automatically accessible.**
+Version 0.2 adds a source-investigation fallback: when fingerprint recognition or reference verification is inconclusive, inspect the supplied video link, creator information and comment threads for leads. Version 0.2.1 also continues this investigation when acquiring or decoding the audio fails. Public Bilibili collection is automated; other platforms have an agent/browser workflow and evidence import. **Douyin comments are not claimed to be automatically accessible.**
 
 ## Install
 
@@ -50,9 +50,23 @@ Default analysis is the first 90 seconds; select another interval with `--start 
 
 `--separate auto` first scans the original mixture and separates when it lacks a two-window consensus. For known dialogue-heavy media, use `always`: this separates first and prioritizes fingerprint requests for the requested music layer. A confident raw match can still refer to dialogue samples or sound effects. The CLI preserves candidates rather than treating the top result as proven.
 
+## When a link cannot provide audio
+
+A video page does not guarantee a downloadable, decodable audio track. The page may require access that the downloader lacks, its URL/parser may no longer work, or the file may have no audio stream. Even successful audio extraction yields a mixture; vocal separation cannot guarantee clean background music.
+
+From 0.2.1, acquisition/decoding failure writes both reports with `recognition.status: audio_unavailable`, the failed stage and recovery steps. It does not submit fingerprints or attempt reference verification. With `--online --clues auto|always`, the original source link can still be investigated for text clues. If those pages also fail, their access gap is reported. The exit code remains **2**, because audio analysis did not complete; readable comments do not make it an audio success. `--offline` and `--clues never` keep their existing behavior.
+
+Continue with a playable local video/audio file, or a user-provided screen recording that contains system audio. Select a passage where the intended music is audible, and use a new output folder so earlier reports stay intact:
+
+```console
+bgm-trace identify "recording.mp4" --source-url "https://b23.tv/EXAMPLE" --out jobs/local-recovery --online --separate always
+```
+
+The CLI does not automatically record the screen or guarantee recovery of inaccessible media. Source/comment titles remain unverified leads until audio can be compared. Distinguish unavailable audio, an extracted mixture with imperfect separation, and an actual fingerprint `no_match`.
+
 ## Investigate source clues
 
-Online identification defaults to `--clues auto`: an inconclusive result triggers source investigation when a supplied source link is available. Use `--source-url URL` for a local audio input, `--clues always` to investigate regardless of the fingerprint result, or `--clues never` to disable the automatic collector. Offline identification never reads online source pages.
+Online identification defaults to `--clues auto`: unavailable audio or an inconclusive result triggers source investigation when a supplied source link is available. Use `--source-url URL` for a local audio input, `--clues always` to investigate regardless of the fingerprint result, or `--clues never` to disable the automatic collector. Offline identification never reads online source pages.
 
 ```console
 bgm-trace investigate "https://b23.tv/xQwffio" --online --out jobs/source-clues.json

@@ -2,6 +2,12 @@
 
 Recorded on 2026-11-18. These are executed checks, not a general music-identification accuracy claim.
 
+## Version 0.2.1 unavailable-audio recovery
+
+Focused tests simulate acquisition failure for a URL, short link and BV ID, and generate real MP4 files without audio tracks to exercise FFmpeg decoding failure. They verify that source investigation can continue without any fingerprint/reference calls, token-bearing error details are omitted, offline/disabled-clue modes do not fetch pages, both reports survive a source-reader failure, and a subsequent local recording can be analyzed in a separate job while preserving the earlier report and original source link.
+
+These are controlled regression tests, not live access tests for restricted websites. No automatic screen-capture feature, universal URL compatibility or guaranteed clean separation was added. Consult CI for the complete test suite result on the release revision.
+
 ## Version 0.2 source investigation
 
 The source-investigation tests cover root pagination, complete reply expansion, nested question/answer context, creator attribution, rate/access blocks, false empty responses, repeated cursors, exhausted budgets, offline evidence import, untrusted imported verification claims, preservation of reports, and automatic fallback routing. The original audio tests remain in the suite.

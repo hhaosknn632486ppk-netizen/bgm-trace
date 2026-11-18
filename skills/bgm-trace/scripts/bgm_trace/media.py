@@ -93,6 +93,26 @@ def safe_url(url: str) -> str:
     return urllib.parse.urlunsplit((parts.scheme, host, parts.path, urllib.parse.urlencode(kept), ""))
 
 
+def input_identity(value: str) -> dict:
+    """Keep a safe source identity even if acquisition never returns metadata."""
+    local = Path(value).expanduser()
+    try:
+        if local.is_file():
+            return {"kind": "local", "name": local.name}
+    except OSError:
+        # Long or otherwise invalid filesystem paths can still be valid URLs.
+        pass
+    if re.fullmatch(r"BV[0-9A-Za-z]{10}", value):
+        return {"kind": "bilibili", "url": "https://www.bilibili.com/video/" + value + "/"}
+    try:
+        parts = urllib.parse.urlsplit(value)
+        if parts.scheme in {"http", "https"} and parts.hostname:
+            return {"kind": "url", "url": safe_url(value)}
+    except ValueError:
+        pass
+    return {"kind": "unknown"}
+
+
 def _get_json(url: str) -> dict:
     request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.bilibili.com/"})
     with urllib.request.urlopen(request, timeout=25) as response:
