@@ -8,6 +8,8 @@ This is an independent workflow implementation built on existing tools. **Source
 
 Version 0.2 adds a source-investigation fallback: when fingerprint recognition or reference verification is inconclusive, inspect the supplied video link, creator information and comment threads for leads. Version 0.2.1 also continues this investigation when acquiring or decoding the audio fails. Public Bilibili collection is automated; other platforms have an agent/browser workflow and evidence import. **Douyin comments are not claimed to be automatically accessible.**
 
+Version 0.3 actively pursues alternate acquisition routes: public Bilibili backup audio/other formats, then yt-dlp; discovered alternate URLs/files can be queued with `--alternate-input`. The skill searches relevant alternate uploads and credited music sources before asking the user to provide a file.
+
 ## Install
 
 Python 3.10+ is required. From a downloaded/cloned checkout:
@@ -56,13 +58,21 @@ A video page does not guarantee a downloadable, decodable audio track. The page 
 
 From 0.2.1, acquisition/decoding failure writes both reports with `recognition.status: audio_unavailable`, the failed stage and recovery steps. It does not submit fingerprints or attempt reference verification. With `--online --clues auto|always`, the original source link can still be investigated for text clues. If those pages also fail, their access gap is reported. The exit code remains **2**, because audio analysis did not complete; readable comments do not make it an audio success. `--offline` and `--clues never` keep their existing behavior.
 
-Continue with a playable local video/audio file, or a user-provided screen recording that contains system audio. Select a passage where the intended music is audible, and use a new output folder so earlier reports stay intact:
+Version 0.3 first tries public Bilibili standalone audio backups/other audio formats and then the general yt-dlp extractor after an ordinary failure. Each remote success is checked for decodable audio. A combined video format is useful too; local extraction obtains its audio. Access/rate restrictions, invalid selections and size/output limits stop retries for that input. The size cap applies per downloaded file; native stream attempts are bounded at six.
+
+Use the skill's search/browser tools to find another relevant upload, credited sound page or accessible music recording. The CLI itself does not search the web. Pass up to four discovered alternatives with `--alternate-input`; only failed acquisition/decoding advances to the next input. Reports preserve the original request, each attempt and the selected source. Results from alternate media are explicitly scoped to that recording, with its relationship to the original unverified:
+
+```console
+bgm-trace identify "ORIGINAL_URL" --alternate-input "ALTERNATE_URL" --out jobs/another-route --online --separate always
+```
+
+The same start/duration apply to all queued inputs. Use a separate job for another edit or a full music track requiring different timing. After applicable accessible routes are exhausted, continue with a local video/audio file or a user-provided recording containing system audio, preserving the original source:
 
 ```console
 bgm-trace identify "recording.mp4" --source-url "https://b23.tv/EXAMPLE" --out jobs/local-recovery --online --separate always
 ```
 
-The CLI does not automatically record the screen or guarantee recovery of inaccessible media. Source/comment titles remain unverified leads until audio can be compared. Distinguish unavailable audio, an extracted mixture with imperfect separation, and an actual fingerprint `no_match`.
+Host playback capture can be used when suitable tools exist; the CLI itself does not record the screen. A promising acquired candidate may be delivered with its source and unverified status even when the original audio is unavailable. Distinguish unavailable audio, imperfect separation and an actual fingerprint `no_match`. See the [alternate-media workflow](skills/bgm-trace/references/media-recovery.md).
 
 ## Investigate source clues
 

@@ -2,6 +2,14 @@
 
 Recorded on 2026-11-18. These are executed checks, not a general music-identification accuracy claim.
 
+## Version 0.3 alternate acquisition
+
+Controlled tests cover a corrupt/failed primary stream followed by a valid backup, another available audio format, fallback from missing standalone audio to a combined video through the general extractor, stopping conditions, alternate-input recovery after acquisition/decoding failure, offline network rejection and preservation of original-versus-alternate identity. Successful recognition/reference evidence on an alternate is not silently assigned to the original video.
+
+A live check on the motivating Bilibili source deliberately disabled the native route, then used the real yt-dlp extractor to obtain **57.898684807 seconds** of audio. Local waveform verification against the previously obtained source audio passed. This demonstrates the second route working for that one sample; the first failure was injected, not an observed native-service outage. No new Shazam identification was needed or claimed.
+
+Search-driven mirror discovery and playback capture are skill workflows using host capabilities, not autonomous CLI crawlers/recorders. They were not demonstrated by that live download test. Media and the detailed private run are excluded from the repository. See the release revision's CI for the complete test-suite result.
+
 ## Version 0.2.1 unavailable-audio recovery
 
 Focused tests simulate acquisition failure for a URL, short link and BV ID, and generate real MP4 files without audio tracks to exercise FFmpeg decoding failure. They verify that source investigation can continue without any fingerprint/reference calls, token-bearing error details are omitted, offline/disabled-clue modes do not fetch pages, both reports survive a source-reader failure, and a subsequent local recording can be analyzed in a separate job while preserving the earlier report and original source link.

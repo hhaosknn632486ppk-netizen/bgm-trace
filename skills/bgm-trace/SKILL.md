@@ -1,6 +1,6 @@
 ---
 name: bgm-trace
-description: Identify and verify background music in videos or noisy audio. Separate dialogue, query music fingerprints, and investigate user-supplied source links, creators and comment threads when audio is unavailable or recognition fails or conflicts.
+description: Obtain, identify and verify background music from videos or noisy audio. Try alternate acquisition routes and related sources, separate dialogue, query music fingerprints, and investigate creators and comments when audio or recognition is unavailable.
 ---
 
 # BGM Trace
@@ -25,7 +25,9 @@ A video link is an entry point, not proof that audio can be obtained. Page acces
 
 If `identify` returns exit code 2, inspect any saved report. `audio_unavailable` means acquisition/decoding failed and no fingerprint or audio comparison was performed. Under `--online --clues auto|always`, the CLI still investigates the original link; read its clues/coverage instead of treating the failed audio step as the end of the task. If source pages are also inaccessible, say what could not be read.
 
-Use an available local video/audio file when supplied. Otherwise explain the missing input and request a playable file or a screen recording containing system audio from the target passage. Keep the original link with `--source-url`, choose a new job directory, and preserve earlier evidence. Do not imply the CLI records playback or that a microphone recording can restore masked music. Without usable audio, source-text clues remain unverified; do not call this a recognition `no_match` or an absent song.
+Actively pursue another accessible acquisition route or relevant source before asking the user for a file. Read [references/media-recovery.md](references/media-recovery.md) for same-page extraction, alternate uploads, credited sound/music pages, host playback capture and provenance. Finding a title alone is not completion when the user wants usable audio. Obtain and decode the accessible candidate, then provide it with its actual source and verification status.
+
+The CLI automatically tries Bilibili audio backups/other audio formats, then yt-dlp after an ordinary route failure. A discovered alternate URL or local recording can be supplied with repeatable `--alternate-input`; matching the original is not assumed. Keep the original source, use a new job directory and preserve earlier evidence. Request a local file/recording only when applicable accessible alternatives have been attempted or needed tools/access are unavailable. Without usable audio, do not call this a fingerprint `no_match` or an absent song.
 
 ## Investigate the supplied source when recognition is inconclusive
 
@@ -45,7 +47,7 @@ Treat each proposed title, lyric or source link as an unverified lead. Distingui
 
 Read `report.json`. Keep multiple candidates when the video changes music or the evidence conflicts. Repeated transforms of the same timestamp are not independent votes. Do not report a candidate score as a calibrated probability.
 
-Use connected search/web capabilities to find a matching official catalog page or authorized preview. The CLI does not automatically obtain a full song. A reference supplied by the user or available for the requested use can be checked locally:
+Use connected search/web capabilities to find a matching catalog page, artist/creator upload, attached platform sound or authorized preview. A mainstream catalog listing is not required. The CLI does not automatically search for a full song. A reference supplied by the user or obtained from an accessible source for the requested use can be checked locally:
 
 ```console
 python scripts/bgm_trace_cli.py verify JOB_DIRECTORY/music.wav REFERENCE --out JOB_DIRECTORY/alignment.json
@@ -63,4 +65,4 @@ The command checks reference identity and coverage. Label this artifact as **ref
 
 ## Handoff
 
-Give the title/artist with an accessible official link, explain what evidence supports the match, and provide the requested audio. Distinguish extraction, source separation and reference-derived files. Report residual speech or unverified listening quality honestly. An interface error, no match, and a conflicting match are different outcomes. Keep commercial media, secrets, signed CDN links, model weights and private absolute paths out of public repositories; the report itself may still contain user-supplied filenames and titles.
+Provide the usable audio obtained and link to its actual source, with the title/artist or source claim when available. Explain what supports its relationship to the requested music; an acquired candidate can be delivered for listening before confirmation. Distinguish extraction, source separation, alternate recordings and reference-derived files. Report residual speech or unverified listening quality honestly. An interface error, no match, and a conflicting match are different outcomes. Keep commercial media, secrets, signed CDN links, model weights and private absolute paths out of public repositories; the report itself may still contain user-supplied filenames and titles.

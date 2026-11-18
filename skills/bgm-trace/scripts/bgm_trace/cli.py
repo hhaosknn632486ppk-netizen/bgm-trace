@@ -37,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     identify.add_argument("--reference", type=Path, help="Optional local reference; no automatic full-track download.")
     identify.add_argument("--clues", choices=["auto", "always", "never"], default="auto", help="Investigate supplied source links when audio is unavailable or recognition/verification is inconclusive.")
     identify.add_argument("--source-url", action="append", default=[], help="User-supplied source link, especially for a local audio input; repeat for more links.")
+    identify.add_argument("--alternate-input", action="append", default=[], help="Try another discovered URL/local file if audio preparation fails; repeat up to four times. Matching the original is not assumed.")
     investigate = commands.add_parser("investigate", help="Read source/author/comments, or analyze a browser evidence capture.")
     investigate.add_argument("source")
     investigate.add_argument("--out", type=Path, required=True)
@@ -67,6 +68,9 @@ def _report_text(report: dict) -> str:
     if preparation.get("status") == "unavailable":
         lines += [f"Audio preparation failed at: {preparation['failed_stage']}", preparation["reason"],
                   "No fingerprint recognition or audio verification was performed.", ""]
+    if preparation.get("relationship_to_requested_source") == "unverified_alternative":
+        lines += ["Analyzed an alternate input; its correspondence to the requested video is not audio-verified.",
+                  "Recognition/reference results below apply to that alternate recording.", ""]
     for item in report["recognition"]["candidates"]:
         lines += [f"{item['title']} — {item['artist']}", f"Independent windows: {item['independent_windows']}; layers: {', '.join(item['layers'])}", str(item.get("url") or ""), ""]
     for error in report.get("warnings", []):
@@ -91,6 +95,8 @@ def _investigate_sources(args: argparse.Namespace, report: dict, job: Path, inco
     sources = list(args.source_url)
     if report["source"].get("url"):
         sources.insert(0, report["source"]["url"])
+    if report.get("requested_source", {}).get("url"):
+        sources.insert(0, report["requested_source"]["url"])
     if not sources:
         report["warnings"].append("Source clues need a user-supplied link; add --source-url or use investigate.")
     for index, url in enumerate(dict.fromkeys(sources)):
@@ -113,11 +119,53 @@ def _finish_report(report: dict, job: Path) -> None:
     print(f"Artifacts: {job}")
 
 
+def _prepare_audio(args: argparse.Namespace, report: dict, job: Path) -> bool:
+    report["input_attempts"] = []
+    for index, value in enumerate(dict.fromkeys([args.input, *args.alternate_input])):
+        folder = job / f"input-{index + 1}"
+        folder.mkdir()
+        attempt = {"input": input_identity(value), "role": "requested" if index == 0 else "alternate"}
+        stage = "acquire"
+        try:
+            source, metadata = acquire(value, folder, args.max_download_mib)
+            report["source"] = metadata
+            attempt["source"] = metadata
+            stage = "extract"
+            artifact = extract(source, folder / "source.wav", args.start, args.duration)
+            (folder / "source.wav").rename(job / "source.wav")
+            report["artifacts"].append(artifact)
+            report["input_attempts"].append({**attempt, "status": "ready"})
+            relationship = "requested_input" if index == 0 else "unverified_alternative"
+            report["audio_preparation"] = {"status": "ready", "selected_input_index": index,
+                                           "relationship_to_requested_source": relationship}
+            return True
+        except Exception as exc:
+            reason = str(exc) if isinstance(exc, TraceError) else f"Audio preparation failed ({type(exc).__name__})."
+            attempt.update(status="failed", failed_stage=stage, reason=reason)
+            if hasattr(exc, "attempts"):
+                attempt["acquisition_attempts"] = exc.attempts
+            report["input_attempts"].append(attempt)
+    report["audio_preparation"] = {"status": "unavailable", "failed_stage": stage, "reason": reason}
+    report["error"] = reason
+    report["recognition"] = {**summarize([]), "status": "audio_unavailable"}
+    report["next_steps"] = [
+        "Review source clues and search the exact video title/uploader or music title for another upload or public sound page.",
+        "Try a discovered source with --alternate-input in a new job. The same --start applies to each input; analyze differently timed recordings in separate jobs.",
+        "If available, capture audible public playback with host tools; request a local file/recording only after accessible alternatives are exhausted.",
+        "Keep alternate recordings and reference candidates labeled until their relationship to the requested video can be verified.",
+    ]
+    return False
+
+
 def identify(args: argparse.Namespace) -> int:
     if args.offline and not Path(args.input).expanduser().is_file():
         raise TraceError("--offline requires a local media file.")
     if args.offline and args.separate == "always" and args.model_repo is None:
         raise TraceError("Offline separation requires --model-repo with trusted cached weights.")
+    if len(args.alternate_input) > 4:
+        raise TraceError("Use at most four alternate inputs per job.")
+    if args.offline and any(not Path(value).expanduser().is_file() for value in args.alternate_input):
+        raise TraceError("--offline requires every alternate input to be an existing local file.")
     if not 4 <= args.window_seconds <= 30 or not 1 <= args.max_download_mib <= 2000:
         raise TraceError("Window length must be 4-30 seconds; download limit must be 1-2000 MiB.")
     if not math.isfinite(args.start) or args.start < 0 or not math.isfinite(args.duration) or not 0 < args.duration <= 600:
@@ -127,29 +175,14 @@ def identify(args: argparse.Namespace) -> int:
         raise TraceError("Job directory is not empty. Choose a new directory to preserve previous results.")
     job.mkdir(parents=True, exist_ok=True)
     report = {"schema_version": 1, "tool_version": __version__, "created_at": datetime.now(timezone.utc).isoformat(), "source": input_identity(args.input), "selection": {"start_seconds": args.start, "max_duration_seconds": args.duration}, "artifacts": [], "attempts": [], "warnings": []}
+    report["requested_source"] = dict(report["source"])
     try:
         print("Extracting audio...", file=sys.stderr)
         prepared = job / "source.wav"
-        stage = "acquire"
-        try:
-            source, metadata = acquire(args.input, job, args.max_download_mib)
-            report["source"] = metadata
-            stage = "extract"
-            report["artifacts"].append(extract(source, prepared, args.start, args.duration))
-        except Exception as exc:
-            reason = str(exc) if isinstance(exc, TraceError) else f"Audio preparation failed ({type(exc).__name__})."
-            report["audio_preparation"] = {"status": "unavailable", "failed_stage": stage, "reason": reason}
-            report["error"] = reason
-            report["recognition"] = {**summarize([]), "status": "audio_unavailable"}
-            report["next_steps"] = [
-                "Provide a playable local video/audio file or a screen recording containing system audio; check that the desired interval has sound.",
-                "Run identify on that local file in a new output directory; use --source-url to retain the original video link.",
-                "Any source/comment titles are unverified leads until the requested audio and a candidate recording can be compared.",
-            ]
+        if not _prepare_audio(args, report, job):
             _investigate_sources(args, report, job, inconclusive=True)
             _finish_report(report, job)
             return 2
-        report["audio_preparation"] = {"status": "ready"}
         if args.online and args.separate != "always":
             print("Recognizing source windows...", file=sys.stderr)
             report["attempts"] += asyncio.run(recognize_file(prepared, "source", job, args.windows, args.window_seconds))
@@ -184,8 +217,10 @@ def identify(args: argparse.Namespace) -> int:
             print("Verifying local reference...", file=sys.stderr)
             from .alignment import verify
             report["verification"] = verify(music if music_ready else prepared, args.reference)
+            report["verification"]["input_relationship"] = report["audio_preparation"]["relationship_to_requested_source"]
             save_json(job / "alignment.json", report["verification"])
         inconclusive = (report["recognition"]["status"] != "candidate_consensus"
+                        or report["audio_preparation"]["relationship_to_requested_source"] == "unverified_alternative"
                         or report["recognition"]["availability"] != "completed"
                         or ("verification" in report and not report["verification"]["evidence_passed"]))
         _investigate_sources(args, report, job, inconclusive)
