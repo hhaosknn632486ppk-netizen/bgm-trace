@@ -1,0 +1,7 @@
+include README.zh-CN.md THIRD_PARTY_NOTICES.md CONTRIBUTING.md
+include skills/bgm-trace/LICENSE
+recursive-include docs *.md *.json
+recursive-include skills *.md *.yaml *.txt *.py
+recursive-include tests *.py
+global-exclude *.py[cod]
+global-exclude __pycache__

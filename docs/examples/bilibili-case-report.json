@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "tool_version": "0.1.0",
+  "created_at": "2026-11-18T13:53:28.933178+00:00",
+  "source": {
+    "kind": "bilibili",
+    "url": "https://www.bilibili.com/video/BV1ctRZYGEsQ/?p=1",
+    "bvid": "BV1ctRZYGEsQ",
+    "page": 1,
+    "cid": 29255271517,
+    "title": "老头心知肚明自己摊上大事了",
+    "audio_id": 30280,
+    "source_sha256": "4aa497219c987d5a7bd0a385c5ad9c65a9ab5623ca6fa0206eebab82e01f16ba"
+  },
+  "selection": {
+    "start_seconds": 0.0,
+    "max_duration_seconds": 90.0
+  },
+  "artifacts": [
+    {
+      "file": "source.wav",
+      "role": "source_extraction",
+      "seconds": 57.89868480725624,
+      "sample_rate": 44100,
+      "channels": 2,
+      "sha256": "9d6d386f9e54bcc02355bcc9f252fe763ca2808eee29d3f7ee65156882cfa1ca"
+    },
+    {
+      "file": "music.wav",
+      "role": "model_separated_music",
+      "model": "htdemucs_ft vocals specialist 04573f0d",
+      "method": "source minus estimated vocals",
+      "device": "cuda",
+      "shifts": 2,
+      "gain": 1.0,
+      "seconds": 57.89868480725624,
+      "elapsed_seconds": 6.078,
+      "sha256": "7223d7bbf922881678605b118573dce8bbd6b1d7f23f6b2677ca1658a1457b36",
+      "limitation": "Dialogue, sound effects, and separation artifacts may remain; no guarantee of a pristine instrumental."
+    },
+    {
+      "file": "music.mp3",
+      "role": "listening_copy_of_model_separated_music"
+    }
+  ],
+  "attempts": [
+    {
+      "layer": "music",
+      "start_seconds": 4.0,
+      "duration_seconds": 12.0,
+      "provider": "shazam",
+      "status": "match",
+      "track": {
+        "id": "811998829",
+        "title": "Sinister Hex Melody",
+        "artist": "Lumea",
+        "url": "https://www.shazam.com/track/811998829/sinister-hex-melody",
+        "reference_offset_seconds": 20.146849609,
+        "timeskew": 0.029865623
+      }
+    },
+    {
+      "layer": "music",
+      "start_seconds": 22.9493,
+      "duration_seconds": 12.0,
+      "provider": "shazam",
+      "status": "match",
+      "track": {
+        "id": "811998829",
+        "title": "Sinister Hex Melody",
+        "artist": "Lumea",
+        "url": "https://www.shazam.com/track/811998829/sinister-hex-melody",
+        "reference_offset_seconds": 39.659667968,
+        "timeskew": 0.02968061
+      }
+    },
+    {
+      "layer": "music",
+      "start_seconds": 41.8987,
+      "duration_seconds": 12.0,
+      "provider": "shazam",
+      "status": "no_match"
+    }
+  ],
+  "warnings": [],
+  "recognition": {
+    "status": "candidate_consensus",
+    "availability": "completed",
+    "candidates": [
+      {
+        "id": "811998829",
+        "title": "Sinister Hex Melody",
+        "artist": "Lumea",
+        "url": "https://www.shazam.com/track/811998829/sinister-hex-melody",
+        "reference_offset_seconds": 20.146849609,
+        "timeskew": 0.029865623,
+        "distinct_positions": 2,
+        "independent_windows": 2,
+        "positions_seconds": [
+          4.0,
+          22.949
+        ],
+        "layers": [
+          "music"
+        ],
+        "separated_positions": 2,
+        "suggested_speed": 1.0297731165
+      }
+    ],
+    "note": "Repeated matches are candidate evidence, not a calibrated probability or proof of the requested sound layer."
+  },
+  "verification": {
+    "evidence_passed": true,
+    "speed_factor": 1.0299432350509783,
+    "reference_start_seconds": 16.02591259828238,
+    "query_duration_seconds": 57.89875,
+    "reference_duration_seconds": 138.66675,
+    "sample_rate": 4000,
+    "window_seconds": 6,
+    "median_absolute_ncc": 0.43570457126441414,
+    "offset_spread_seconds": 0.0028325000000037903,
+    "timing_ambiguous": false,
+    "windows": [
+      {
+        "query_start_seconds": 1.0,
+        "reference_start_seconds": 17.055770000000003,
+        "reference_base_seconds": 16.02577,
+        "absolute_ncc": 0.5499070347399657,
+        "peak_to_p99_ratio": 11.370622450069721,
+        "unconstrained_reference_start_seconds": 17.055770000000003
+      },
+      {
+        "query_start_seconds": 25.949375,
+        "reference_start_seconds": 42.7524675,
+        "reference_base_seconds": 16.02461125,
+        "absolute_ncc": 0.4101834820699069,
+        "peak_to_p99_ratio": 9.308671481297505,
+        "unconstrained_reference_start_seconds": 21.4191075
+      },
+      {
+        "query_start_seconds": 50.89875,
+        "reference_start_seconds": 68.44865,
+        "reference_base_seconds": 16.022937499999998,
+        "absolute_ncc": 0.43570457126441414,
+        "peak_to_p99_ratio": 11.364272950102121,
+        "unconstrained_reference_start_seconds": 68.44865
+      }
+    ],
+    "searched_speed_range": [
+      0.94,
+      1.06
+    ],
+    "method": "Joint multi-window waveform NCC over resampled reference speeds",
+    "interpretation": "Heuristic same-recording evidence, not an identification probability. Pitch-only changes, key-locked stretching, covers, repeated motifs and edits need additional review.",
+    "query": {
+      "file": "music.wav",
+      "sha256": "7223d7bbf922881678605b118573dce8bbd6b1d7f23f6b2677ca1658a1457b36"
+    },
+    "reference": {
+      "file": "netease_reference.mp3",
+      "sha256": "4127e699e651988db2b71fb390adcfafbdbd22b749f046fc35f8a5c1ff631bf9"
+    },
+    "analysis_limit_seconds": 600
+  }
+}

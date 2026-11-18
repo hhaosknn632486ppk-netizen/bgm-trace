@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bgm-trace"
+version = "0.1.0"
+description = "Trace music in dialogue-heavy video with separation, multi-window recognition, and speed-aware reference checks."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "BGM Trace contributors"}]
+dependencies = ["numpy>=1.26,<3", "scipy>=1.11,<2", "soundfile>=0.12,<0.14", "imageio-ffmpeg>=0.6,<1", "shazamio==0.9.0", "yt-dlp>=2025.1.0"]
+
+[project.optional-dependencies]
+separate = ["demucs>=4.0,<5"]
+dev = ["pytest>=8,<10", "build>=1,<2"]
+
+[project.scripts]
+bgm-trace = "bgm_trace.cli:main"
+
+[project.urls]
+Repository = "https://github.com/hhaosknn632486ppk-netizen/bgm-trace"
+Issues = "https://github.com/hhaosknn632486ppk-netizen/bgm-trace/issues"
+
+[tool.setuptools.packages.find]
+where = ["skills/bgm-trace/scripts"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["skills/bgm-trace/scripts"]
