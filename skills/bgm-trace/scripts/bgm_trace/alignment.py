@@ -117,9 +117,14 @@ def align_arrays(query: np.ndarray, reference: np.ndarray, sample_rate: int = 40
     return {"evidence_passed": bool(passed), "speed_factor": float(estimated_speed), "reference_start_seconds": float(offset), "query_duration_seconds": seconds, "reference_duration_seconds": len(reference) / sample_rate, "sample_rate": sample_rate, "window_seconds": window, "median_absolute_ncc": best["median_correlation"], "offset_spread_seconds": best["offset_spread_seconds"], "timing_ambiguous": best.get("timing_ambiguous", False), "windows": hits, "searched_speed_range": [speed_min, speed_max], "method": "Joint multi-window waveform NCC over resampled reference speeds", "interpretation": "Heuristic same-recording evidence, not an identification probability. Pitch-only changes, key-locked stretching, covers, repeated motifs and edits need additional review."}
 
 
-def verify(query: Path, reference: Path, **options) -> dict:
-    result = align_arrays(read_mono(query), read_mono(reference), **options)
+def verify(query: Path, reference: Path, *, query_start: float = 0., query_duration: float = 600., **options) -> dict:
+    if not np.isfinite([query_start, query_duration]).all() or query_start < 0 or not 4 <= query_duration <= 600:
+        raise TraceError("Verification needs a nonnegative query start and a duration of 4-600 seconds.")
+    result = align_arrays(read_mono(query, start=query_start, maximum=query_duration), read_mono(reference), **options)
     result.update(query={"file": query.name, "sha256": digest(query)}, reference={"file": reference.name, "sha256": digest(reference)}, analysis_limit_seconds=600)
+    result["query_selection"] = {"start_seconds": query_start, "max_duration_seconds": query_duration}
+    for window in result["windows"]:
+        window["source_query_start_seconds"] = query_start + window["query_start_seconds"]
     return result
 
 

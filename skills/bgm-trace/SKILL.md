@@ -1,6 +1,6 @@
 ---
 name: bgm-trace
-description: Obtain, identify and verify background music from videos or noisy audio. Try alternate acquisition routes and related sources, separate dialogue, query music fingerprints, and investigate creators and comments when audio or recognition is unavailable.
+description: Find and obtain background music from videos or noisy audio, then verify the recording. Use separation, fingerprints, creator/comment clues and accessible music libraries, including Jianying; not general video editing.
 ---
 
 # BGM Trace
@@ -45,12 +45,14 @@ Treat each proposed title, lyric or source link as an unverified lead. Distingui
 
 ## Verify candidates
 
-Read `report.json`. Keep multiple candidates when the video changes music or the evidence conflicts. Repeated transforms of the same timestamp are not independent votes. Do not report a candidate score as a calibrated probability.
+Read `report.json`. Keep multiple candidates when the video changes music or the evidence conflicts. A matching opening and ending do not identify a different middle passage. Select the requested interval explicitly; timestamps refer to the input file, so an already trimmed file starts at zero. Repeated transforms of the same timestamp are not independent votes. Do not report a candidate score as a calibrated probability.
 
 Use connected search/web capabilities to find a matching catalog page, artist/creator upload, attached platform sound or authorized preview. A mainstream catalog listing is not required. The CLI does not automatically search for a full song. A reference supplied by the user or obtained from an accessible source for the requested use can be checked locally:
 
 ```console
 python scripts/bgm_trace_cli.py verify JOB_DIRECTORY/music.wav REFERENCE --out JOB_DIRECTORY/alignment.json
+# A middle passage in a full-length query, without creating a separate cut
+python scripts/bgm_trace_cli.py verify FULL_QUERY REFERENCE --start 48 --duration 38 --out JOB_DIRECTORY/middle-alignment.json
 ```
 
 This searches resampling-style speed/pitch changes and checks agreement across different positions. It does not establish authorship, a canonical original, or equivalence of covers/live performances. A failed waveform check does not prove the composition differs. For methods and limits, consult [references/evidence.md](references/evidence.md).
@@ -62,6 +64,14 @@ python scripts/bgm_trace_cli.py export-reference REFERENCE --alignment JOB_DIREC
 ```
 
 The command checks reference identity and coverage. Label this artifact as **reference-derived**, distinct from the **model-separated** video track. Do not replace one silently with the other.
+
+## Follow a creator's music-library lead through to a file
+
+If source/creator/comments identify an editing-app library, read [references/library-recovery.md](references/library-recovery.md). Follow the named platform, search the title/artist, acquire through its ordinary download/export path, inspect actual file format, and compare the requested video passage. Chinese Jianying and international CapCut do not establish each other's catalog coverage.
+
+Use `library-snapshot` before a normal download and `library-collect` afterward to select a stable new file by waveform evidence. Use `library-import` for an explicitly identified file that was already cached. Include `--source-url` and `--clue-report` to preserve the source and bind the earlier investigation; both are local bookkeeping in these commands. An unchanged cache is not a fresh download. Multiple distinct matching files remain ambiguous; do not take the newest file as proof.
+
+For Windows native UI automation, read [references/jianying-desktop.md](references/jianying-desktop.md). Prefer reliable existing host desktop controls when available; the included experimental helper supports observed screenshots and guarded input. The agent must inspect each new frame, locate controls, and confirm outcomes. It is not an autonomous catalog API. Continue within the user's existing authorization; use a task-owned scratch draft if the app requires a project. Do not modify unrelated drafts, reuse screen coordinates from this case, or handle account credentials. If UI access is unavailable, continue other accessible routes or explain the specific remaining handoff.
 
 ## Handoff
 

@@ -1,6 +1,6 @@
 # Related projects and overlap
 
-Reviewed on 2026-11-18. This is a bounded source/README review, not a comprehensive survey or a comparative accuracy benchmark. BGM Trace is an independent implementation of a workflow whose main ingredients already exist. No source files were copied from the projects below.
+Audio-project review: 2026-11-18. Jianying-project review: 2026-11-19. This is a bounded source/README review, not a comprehensive survey or a comparative accuracy benchmark. BGM Trace is an independent implementation of a workflow whose main ingredients already exist. No source files were copied from the projects below.
 
 | Project | Existing overlap | BGM Trace's current emphasis |
 | --- | --- | --- |
@@ -17,6 +17,16 @@ Its [comparison script](https://github.com/Snoop2023/video-background-music-iden
 Its [separation script](https://github.com/Snoop2023/video-background-music-identification-skill/blob/ad61b9753be54f86048faee9383e8963705f2cb7/skills/video-background-music-identification/scripts/separate_vocals.py) uses Demucs' two-stem CLI. BGM Trace loads the official `htdemucs_ft` vocal specialist and subtracts estimated vocals from the source. This is an implementation choice, not a demonstrated universal separation improvement. Both depend on Demucs.
 
 BGM Trace does not currently implement the closest project's HPSS path or visual-clue workflow. Version 0.2 adds a source/creator/comment fallback, with automated public Bilibili pagination and a browser evidence workflow for other platforms. Metadata research already exists in the closest project's instructions; the fallback is not claimed as a novel idea. Features may change after the inspected revisions.
+
+## Jianying automation overlap (0.4)
+
+| Project / inspected primary source | Existing capability / boundary | BGM Trace's scope |
+| --- | --- | --- |
+| [Gwaky07/Auto-Cut-skill](https://github.com/Gwaky07/Auto-Cut-skill), including [build_cloud_music_library.py](https://github.com/Gwaky07/Auto-Cut-skill/blob/main/scripts/build_cloud_music_library.py) | Editing/export workflow; README recommends older Windows app versions for automated export. The inspected cloud-music index builder reads music material IDs/titles from existing draft JSON. That is not demonstrated general search of the current app's full music catalog. | Follow a comment's music lead in the currently installed UI, receive ordinary task-related audio files, and verify the recording. No old-app requirement or draft JSON mining. |
+| [yangdke/jianying-autoedit-agent](https://github.com/yangdke/jianying-autoedit-agent) | Existing native-UI editing instructions use current observed controls. Observed UI interaction is not a new idea. | A small guarded Windows input/capture helper plus an audio-evidence workflow; not a general autoediting assistant. |
+| [Ppppan9/jianying-mcp](https://github.com/Ppppan9/jianying-mcp) | Draft-generation tooling; its README explicitly lists cloud music/effect integration as unavailable in the reviewed version. | Ordinary music-library acquisition and local waveform comparison, without claiming a draft generator provides music search. |
+
+These repositories may change. This inspection did not establish that no music-search API exists anywhere, and it was not an installation or comparative reliability test. BGM Trace's native UI path remains experimental and agent-driven. Its executed scope is in [the case record](jianying-case.md).
 
 ## What is and is not original
 

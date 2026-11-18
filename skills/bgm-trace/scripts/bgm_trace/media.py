@@ -85,8 +85,13 @@ def extract(source: Path, target: Path, start: float = 0, duration: float = 90) 
     return {"file": target.name, "role": "source_extraction", "seconds": info.duration, "sample_rate": info.samplerate, "channels": info.channels, "sha256": digest(target)}
 
 
-def read_mono(path: Path, rate: int = 4000, maximum: float = 600) -> np.ndarray:
-    payload = run_ffmpeg(["-i", str(path), "-t", str(maximum), "-vn", "-ac", "1", "-ar", str(rate), "-f", "f32le", "pipe:1"], capture=True)
+def read_mono(path: Path, rate: int = 4000, maximum: float = 600, start: float = 0.) -> np.ndarray:
+    if not np.isfinite([start, maximum]).all() or start < 0 or not 0 < maximum <= 601:
+        raise TraceError("Use a nonnegative start and a bounded positive audio duration.")
+    # Avoid a zero-time seek: some AAC demuxers handle leading samples differently
+    # when seeking. Preserve whole-file decoding and its existing time origin.
+    seek = ["-ss", f"{start:.8f}"] if start > 0 else []
+    payload = run_ffmpeg([*seek, "-i", str(path), "-t", str(maximum), "-vn", "-ac", "1", "-ar", str(rate), "-f", "f32le", "pipe:1"], capture=True)
     result = np.frombuffer(payload, dtype="<f4").astype(np.float64)
     if not result.size or not np.isfinite(result).all():
         raise TraceError("Audio is empty or contains non-finite samples.")

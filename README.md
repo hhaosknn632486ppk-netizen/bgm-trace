@@ -10,6 +10,8 @@ Version 0.2 adds a source-investigation fallback: when fingerprint recognition o
 
 Version 0.3 actively pursues alternate acquisition routes: public Bilibili backup audio/other formats, then yt-dlp; discovered alternate URLs/files can be queued with `--alternate-input`. The skill searches relevant alternate uploads and credited music sources before asking the user to provide a file.
 
+**Version 0.4 completes the comment → music-library → local file → verification workflow.** It receives ordinary library downloads, corrects misleading file extensions without re-encoding native audio, and verifies a selected video passage. An experimental Windows helper enables an agent to observe and operate Jianying's normal music search UI. See the [Jianying case](docs/jianying-case.md) and the exact [automation boundary](skills/bgm-trace/references/jianying-desktop.md).
+
 ## Install
 
 Python 3.10+ is required. From a downloaded/cloned checkout:
@@ -89,6 +91,27 @@ The skill then reads the collected material and continues incomplete areas with 
 
 `clues.json` contains all collected documents, parent/reply relationships, ranked leads and coverage. Keyword ranking is not an exhaustive semantic review. A bare song title under a song question may be useful; a movie title may be irrelevant to the BGM. Every textual lead remains unverified until independently checked against candidate audio. Collected comments/profiles belong in a private job folder, not the open-source repository.
 
+## Recover a music-library recording
+
+When a creator points to Jianying or another music library, follow the [library workflow](skills/bgm-trace/references/library-recovery.md). Confirm the catalog title/artist in the normal app, take a baseline of its **music-only directory** before downloading, then collect and verify:
+
+```console
+bgm-trace library-snapshot MUSIC_DIRECTORY --out jobs/library-before.json
+# Complete the ordinary app download, then:
+bgm-trace library-collect MUSIC_DIRECTORY --snapshot jobs/library-before.json --out jobs/library-result --query full-video.mp4 --start 48 --duration 38 --title "CATALOG_TITLE" --artist "CATALOG_ARTIST" --source-url PUBLIC_VIDEO_URL --clue-report jobs/clues.json --mp3
+```
+
+For an explicitly identified file already in the cache or an exported audio file:
+
+```console
+bgm-trace library-import SELECTED_FILE --out jobs/cached-result --query full-video.mp4 --start 48 --duration 38 --title "CATALOG_TITLE" --artist "CATALOG_ARTIST" --mp3
+bgm-trace verify separated-full-video.wav jobs/cached-result/reference.m4a --start 48 --duration 38 --out jobs/separated-check.json
+```
+
+Use the actual extension named in the recovery report. These commands work locally, bind source/clue identities when supplied, and save a native byte-identical reference plus an optional labeled MP3 transcode. They do not infer a title from an opaque cache filename. Without `--query`, a uniquely selected file is `acquired_unverified`; multiple distinct eligible files remain `ambiguous`. Unchanged cached files are not claimed as new downloads. Jobs must be new/empty; the watcher never deletes cache files. Its limits and failure statuses are documented in the workflow.
+
+On Windows, the agent can use `jianying-desktop inspect`, `capture`, `click`, `type` and `key` with a newly viewed observation for every input. It must inspect results and identify controls; **this is not an unattended song-search/download API**. The tested Chinese input/search sequence is on Jianying Pro 11.8.0.14778. Other layouts/platforms need their own validation. Read the [desktop helper instructions](skills/bgm-trace/references/jianying-desktop.md) before using it.
+
 ## Skill installation
 
 Copy `skills/bgm-trace` into your agent's skill directory, for example `~/.codex/skills/bgm-trace`. The folder includes the same Python implementation as the CLI, so standalone copying does not lose the engine. Install its dependencies into your chosen environment:
@@ -109,9 +132,11 @@ Invoke `$bgm-trace` with a local video or link. The skill describes how to inter
 | `report.json`, `report.txt` | Source identity, parameters, per-window outcomes, candidate agreement, warnings |
 | `alignment.json` | Local reference hashes, estimated speed/start, correlations across separate windows |
 | `clues.json`, `clues.txt` | Local source/creator/comment evidence, unverified leads and actual reading coverage |
+| `library-report.json`, `reference.<actual-extension>` | Catalog/source claims, candidate checks and a byte-identical ordinary library file |
+| `reference-listening.mp3` | Optional listening transcode, distinct from the native library audio |
 | exported excerpt + JSON sidecar | Explicitly reference-derived audio; **not** an extracted source stem |
 
-Reports omit absolute input paths and signed download URLs. They can still contain filenames, video titles, track metadata and source identities: review them before sharing. Media remains in the chosen job directory.
+Audio evidence reports omit absolute input paths and signed download URLs. They can still contain filenames, video titles, track metadata and source identities: review them before sharing. **Cache snapshots and desktop observations contain private paths/window state and must remain private**, together with screenshots and collected comments. Media remains in the chosen job directory.
 
 Recognition uses **ShazamIO 0.9.0**, an unofficial client. Fingerprints and request metadata go to Shazam when `--online` is selected. Decoding, separation and reference comparison run locally. There is no BGM Trace backend, account, telemetry, or bundled music catalog. URL acquisition and first-time model retrieval also use the network. This release does not bundle the reverse-engineered NetEase/Kugou fingerprinters.
 
@@ -127,7 +152,7 @@ python -m pytest -q
 python -m build
 ```
 
-Tests generate their own audio: shifted/speed-changed positives, unrelated negatives, silence, duplicate recognition votes, and output/provenance checks. The [worked case](docs/worked-case.md) documents the motivating 58-second Bilibili example without redistributing the recording. One successful case is not a general accuracy benchmark. See [validation status](docs/validation.md) for what was actually executed.
+Tests generate their own audio: shifted/speed-changed positives, unrelated negatives, silence, duplicate recognition votes, output/provenance checks, misleading library extensions, changed-file selection and stale/changed desktop observations. The [original worked case](docs/worked-case.md) and [comment-to-Jianying case](docs/jianying-case.md) document observed results without redistributing recordings. These cases are not a general accuracy benchmark. See [validation status](docs/validation.md) for what was actually executed.
 
 ## Dependencies and rights
 

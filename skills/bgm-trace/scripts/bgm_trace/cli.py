@@ -51,6 +51,8 @@ def build_parser() -> argparse.ArgumentParser:
     comparison.add_argument("query", type=Path)
     comparison.add_argument("reference", type=Path)
     comparison.add_argument("--out", type=Path, required=True)
+    comparison.add_argument("--start", type=float, default=0., help="Start of the requested interval in the query file.")
+    comparison.add_argument("--duration", type=float, default=600., help="Maximum query interval, 4-600 seconds.")
     comparison.add_argument("--speed-min", type=float, default=.94)
     comparison.add_argument("--speed-max", type=float, default=1.06)
     comparison.add_argument("--speed-step", type=float, default=.01)
@@ -59,6 +61,39 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("reference", type=Path)
     export.add_argument("--alignment", type=Path, required=True)
     export.add_argument("--out", type=Path, required=True)
+    baseline = commands.add_parser("library-snapshot", help="Record only music-file metadata before a normal app download.")
+    baseline.add_argument("cache", type=Path, help="Explicit music-only directory; not recursively scanned.")
+    baseline.add_argument("--out", type=Path, required=True, help="New private snapshot JSON.")
+    for name, help_text in [("library-import", "Save and optionally verify one explicitly selected local library file."),
+                            ("library-collect", "Wait for stable new/changed music files since a snapshot, then verify/select.")]:
+        library = commands.add_parser(name, help=help_text)
+        library.add_argument("input", type=Path, help="Selected file for import; music-only directory for collect.")
+        library.add_argument("--out", type=Path, required=True, help="New or empty job directory outside the cache.")
+        library.add_argument("--title", default="", help="Catalog claim read from the app; not inferred from cached filenames.")
+        library.add_argument("--artist", default="")
+        library.add_argument("--platform", default="jianying")
+        library.add_argument("--source-url", action="append", default=[], help="Public source identity; repeat for more links. This does not fetch the page.")
+        library.add_argument("--clue-report", type=Path, help="Bind an existing private source-investigation report by filename and SHA-256.")
+        library.add_argument("--query", type=Path, help="Original video/audio or its separated track for local matching.")
+        library.add_argument("--start", type=float, default=0.)
+        library.add_argument("--duration", type=float, default=600.)
+        library.add_argument("--mp3", action="store_true", help="Also create a labeled MP3 listening copy.")
+        if name == "library-collect":
+            library.add_argument("--snapshot", type=Path, required=True)
+            library.add_argument("--timeout", type=float, default=120., help="Bounded wait in seconds, at most 600.")
+            library.add_argument("--settle", type=float, default=2., help="Require all changed music-file metadata to remain stable for this many seconds.")
+            library.add_argument("--max-candidates", type=int, default=8)
+    desktop = commands.add_parser("jianying-desktop", help="Experimental Windows window-observed UI helper; not an autonomous song search API.")
+    desktop.add_argument("action", choices=["inspect", "capture", "click", "type", "key"])
+    desktop.add_argument("--pid", type=int)
+    desktop.add_argument("--out", type=Path, help="New PNG path for capture; a private JSON observation is saved alongside it.")
+    desktop.add_argument("--frame", type=Path, help="Fresh, visually inspected observation JSON required for every input action.")
+    desktop.add_argument("--x", type=int)
+    desktop.add_argument("--y", type=int)
+    desktop.add_argument("--text")
+    desktop.add_argument("--key", choices=["Enter", "Escape", "SelectAll"])
+    desktop.add_argument("--select-all", action="store_true")
+    desktop.add_argument("--submit", action="store_true")
     return parser
 
 
@@ -257,9 +292,27 @@ def main(argv: list[str] | None = None) -> int:
             from .alignment import verify
             if args.out.exists():
                 raise TraceError("Alignment output already exists; choose another file.")
-            result = verify(args.query, args.reference, speed_min=args.speed_min, speed_max=args.speed_max, speed_step=args.speed_step, window_seconds=args.window_seconds)
+            result = verify(args.query, args.reference, query_start=args.start, query_duration=args.duration, speed_min=args.speed_min, speed_max=args.speed_max, speed_step=args.speed_step, window_seconds=args.window_seconds)
             save_json(args.out, result)
             print(json.dumps(result, ensure_ascii=False, indent=2))
+        elif args.command == "library-snapshot":
+            from .library import snapshot
+            print(json.dumps(snapshot(args.cache, args.out), ensure_ascii=False, indent=2))
+        elif args.command in {"library-import", "library-collect"}:
+            from .library import collect, import_file
+            if not math.isfinite(args.start) or args.start < 0 or not math.isfinite(args.duration) or not 4 <= args.duration <= 600:
+                raise TraceError("Library verification needs a nonnegative start and a duration of 4-600 seconds.")
+            options = dict(title=args.title, artist=args.artist, platform=args.platform, query=args.query,
+                           start=args.start, duration=args.duration, mp3=args.mp3, source_urls=args.source_url, clue_report=args.clue_report)
+            if args.command == "library-collect":
+                result = collect(args.input, args.snapshot, args.out, **options, timeout=args.timeout, settle=args.settle, max_candidates=args.max_candidates)
+            else:
+                result = import_file(args.input, args.out, **options)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0 if result["status"] in {"verified", "acquired_unverified"} else 2
+        elif args.command == "jianying-desktop":
+            from .desktop import run
+            return run(args)
         elif args.command == "export-reference":
             from .alignment import export_reference
             alignment = json.loads(args.alignment.read_text(encoding="utf-8"))

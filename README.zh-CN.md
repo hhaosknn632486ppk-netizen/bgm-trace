@@ -4,6 +4,8 @@
 
 提供命令行和可单独复制安装的 Codex 技能。代码采用 MIT 许可证。**这是对现有技术的工程整合，社区已经有高度相似的技能和工具。** [相关项目对比](docs/related-projects.md) 明确列出了重合范围，不能把这个流程宣传为首创。
 
+**0.4 版整合了“查评论 → 去剪映找歌 → 接收曲库文件 → 对照视频核验”的完整技能流程。** 新增音乐文件接收、真实格式识别、指定片段核验，以及 Windows 剪映窗口辅助工具。[昔涟视频案例](docs/jianying-case.md)记录了实际找到并核验的歌曲，也明确区分自动执行的步骤与智能体需要观察判断的界面操作。
+
 | 已有方案 | 重合与差异 |
 | --- | --- |
 | [video-background-music-identification-skill](https://github.com/Snoop2023/video-background-music-identification-skill) | 流程高度接近，已有分离、识曲和原曲相关性核验。我们侧重可直接执行的流程、播放速度搜索、跨片段共同定位和重复乐段歧义检查。 |
@@ -98,12 +100,44 @@ bgm-trace investigate "用户提供的原链接" --evidence capture.json --out j
 
 格式及完整流程见[来源调查说明](skills/bgm-trace/references/source-investigation.md)。输出 `clues.json` / `.txt` 会保留来源、回复关系、未验证线索、读取数量和停止原因。采集到的评论与作者资料留在本地任务目录，不随开源代码发布。
 
+## 作者说“在剪映里”之后，继续取得音频
+
+技能会根据评论里的完整曲名、作者和平台，在正常音乐库中查找。剪映与国际版 CapCut 的曲库不能互相替代。确认结果后，通过应用正常的下载/导出功能取得文件；不会把找到曲名直接算成任务完成。
+
+下载前，只对明确的音乐缓存目录保存基线；下载完成后，接收本次新增或变化的文件，并与目标片段核验：
+
+```console
+bgm-trace library-snapshot "音乐缓存目录" --out jobs/library-before.json
+bgm-trace library-collect "音乐缓存目录" --snapshot jobs/library-before.json --out jobs/library-result --query full-video.mp4 --start 48 --duration 38 --title "故事情绪 强烈色彩" --artist "Ricky Wang" --source-url "https://www.bilibili.com/video/BV1VuCwBTEkV/" --clue-report jobs/clues.json --mp3
+```
+
+歌曲已经缓存，或已通过应用导出到指定位置时，导入明确选定的文件：
+
+```console
+bgm-trace library-import "明确选定的音频文件" --out jobs/cached-result --query full-video.mp4 --start 48 --duration 38 --title "故事情绪 强烈色彩" --artist "Ricky Wang" --mp3
+```
+
+`--start` 相对传入文件计时，示例核验的是完整视频的 48–86 秒；已经裁过的文件要重新换算时间。下载接收不会按“最近的文件”直接猜歌曲：有查询音频时，要求唯一候选通过比对；多个不同文件都符合时报告歧义。没有查询音频时可以先保存唯一候选，但状态是 `acquired_unverified`。缓存没有变化时明确报告，而不是声称刚下载成功。
+
+输出包含 `library-report.json`、`alignment.json`、`reference.<实际格式>` 和可选的 `reference-listening.mp3`。原始曲库文件按真实容器命名、保持字节一致；试听 MP3 单独转码。此次真实文件虽然名为 `.mp3`，实际却是 M4A/AAC，这个问题已纳入自动检查。`--source-url` / `--clue-report` 记录原视频来源及评论调查文件哈希，不会在这一步联网读页面。
+
+| 步骤 | 目前自动化程度 |
+| --- | --- |
+| B 站简介、分页评论与楼中楼采集 | 已有 CLI；受访问状态及读取预算限制，技能继续通读与判断线索 |
+| 剪映音乐库搜索、点击正常下载按钮 | 实验性的智能体辅助操作：看当前窗口，再逐步点击/输入；不是无人值守的曲库接口 |
+| 音乐目录基线、变化文件接收、格式检查、保存音频 | CLI 自动执行，默认只检查该目录当前层，保留旧文件 |
+| 与指定视频片段核验、原文件哈希、试听版输出 | CLI 自动执行；歧义或未匹配会保留报告 |
+
+Windows 辅助工具提供 `jianying-desktop inspect/capture/click/type/key`。每次输入需要新截图，并检查窗口、焦点、位置和用户输入活动。已在剪映专业版 **11.8.0.14778** 实测进入音乐库、中文搜索并看到目标歌曲；其他版本与布局尚不能保证。完整使用说明见[曲库获取流程](skills/bgm-trace/references/library-recovery.md)与[剪映窗口工具](skills/bgm-trace/references/jianying-desktop.md)。
+
 ## 原曲核验与纯音乐片段
 
 已有可使用的本地原曲或官方试听时：
 
 ```console
 bgm-trace verify jobs/dialogue/music.wav reference.mp3 --out jobs/dialogue/alignment.json
+# 原视频有多首配乐时，单独核验用户指定的中段
+bgm-trace verify full-video.mp4 reference.mp3 --start 48 --duration 38 --out jobs/middle-alignment.json
 bgm-trace export-reference reference.mp3 --alignment jobs/dialogue/alignment.json --out jobs/dialogue/reference-excerpt.mp3
 ```
 
@@ -115,12 +149,12 @@ bgm-trace export-reference reference.mp3 --alignment jobs/dialogue/alignment.jso
 
 ## 网络与当前限制
 
-音频处理和原曲比对在本地执行；`--online` 会通过非官方 ShazamIO 客户端向 Shazam 提交音频指纹及请求元数据。视频下载、首次模型下载也需要联网。项目没有自建曲库、账号或遥测服务。当前版本未捆绑网易云/酷狗逆向识曲组件，也不自动下载完整歌曲。
+音频处理和原曲比对在本地执行；`--online` 会通过非官方 ShazamIO 客户端向 Shazam 提交音频指纹及请求元数据。视频下载、首次模型下载也需要联网。项目没有自建曲库、账号或遥测服务。当前版本未捆绑网易云/酷狗逆向识曲组件，也没有全网歌曲自动下载接口；曲库文件通过正常应用下载/导出后接收。
 
 服务限流、请求错误和“没有匹配到歌曲”会分别记录。遇到 Shazam 限流后，本次任务停止继续识曲，但保留本地分离文件并可完成原曲比对，不会用连续重试绕过限流。
 
 纯本地提取可用 `--offline --separate never`；离线分离需要 `--offline --separate always --model-repo PATH`，并提前准备依赖和可信的官方模型。
 
-报告会省略绝对文件路径、带签名的下载地址，但仍会包含文件名、视频标题和识曲结果。源素材、模型、cookies、凭据应保存在仓库外。商业音乐没有随开源代码发布。
+音频证据报告会省略绝对文件路径、带签名的下载地址，但仍会包含文件名、视频标题和识曲结果。**缓存基线、窗口观察记录及截图含本地路径或界面信息，必须留在私有工作目录。** 评论原文、源素材、模型、cookies、凭据不随仓库发布。商业音乐没有随开源代码发布。
 
-目前是早期版本：一次成功识别不能证明普遍优于手机端。见[本次实例](docs/worked-case.md)、[验证记录](docs/validation.md)和[社区方案对比](docs/related-projects.md)。
+目前是早期版本：个别成功案例不能证明普遍优于手机端。见[最初识曲实例](docs/worked-case.md)、[评论与剪映实例](docs/jianying-case.md)、[验证记录](docs/validation.md)和[社区方案对比](docs/related-projects.md)。

@@ -21,3 +21,5 @@ private/
 clues*.json
 clues*.txt
 source-investigations/
+*.png
+*.json.used

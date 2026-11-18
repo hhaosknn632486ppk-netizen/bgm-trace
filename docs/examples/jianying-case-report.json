@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "case": "Creator-comment lead to Jianying music-library recording",
+  "observed_dates": [
+    "2026-11-18",
+    "2026-11-19"
+  ],
+  "source_url": "https://www.bilibili.com/video/BV1VuCwBTEkV/",
+  "creator_reply_ids": [
+    "282240916528",
+    "282268396736"
+  ],
+  "catalog_claim": {
+    "title": "故事情绪 强烈色彩",
+    "artist": "Ricky Wang",
+    "platform": "Jianying Pro"
+  },
+  "acquisition": {
+    "ordinary_app_download": "2026-11-18",
+    "version_040_check": "existing-file import and isolated changed-file replay; not a second native-app download",
+    "file_bytes": 2555065,
+    "sha256": "fa6bb8f8805cb0ab66142c6079346baf5b3f2f38b95f3a04d6d32e32c86e66c7",
+    "container": "M4A",
+    "codec": "AAC",
+    "decoded_seconds": 157.884,
+    "misleading_cache_extension": ".mp3",
+    "delivered_native_extension": ".m4a",
+    "byte_identical_copy": true
+  },
+  "comparison": {
+    "raw": {
+      "evidence_passed": true,
+      "speed_factor": 1.0000000000000004,
+      "reference_start_seconds": 1.0000000000000022,
+      "query_selection": {
+        "start_seconds": 48,
+        "max_duration_seconds": 38
+      },
+      "query_duration_seconds": 38.0,
+      "reference_duration_seconds": 157.884,
+      "window_seconds": 6,
+      "median_absolute_ncc": 0.4031058470944203,
+      "offset_spread_seconds": 0.0,
+      "timing_ambiguous": false,
+      "windows": [
+        {
+          "query_start_seconds": 1.0,
+          "reference_start_seconds": 2.0,
+          "reference_base_seconds": 1.0,
+          "absolute_ncc": 0.6878236978073717,
+          "peak_to_p99_ratio": 5.549629806500209,
+          "unconstrained_reference_start_seconds": 2.0,
+          "source_query_start_seconds": 49.0
+        },
+        {
+          "query_start_seconds": 16.0,
+          "reference_start_seconds": 17.0,
+          "reference_base_seconds": 1.0,
+          "absolute_ncc": 0.2873870412763436,
+          "peak_to_p99_ratio": 5.754016274437207,
+          "unconstrained_reference_start_seconds": 17.0,
+          "source_query_start_seconds": 64.0
+        },
+        {
+          "query_start_seconds": 31.0,
+          "reference_start_seconds": 32.0,
+          "reference_base_seconds": 1.0,
+          "absolute_ncc": 0.4031058470944203,
+          "peak_to_p99_ratio": 6.782855580775593,
+          "unconstrained_reference_start_seconds": 32.0,
+          "source_query_start_seconds": 79.0
+        }
+      ],
+      "method": "Joint multi-window waveform NCC over resampled reference speeds",
+      "interpretation": "Heuristic same-recording evidence, not an identification probability. Pitch-only changes, key-locked stretching, covers, repeated motifs and edits need additional review."
+    },
+    "separated": {
+      "evidence_passed": true,
+      "speed_factor": 1.0000000000000004,
+      "reference_start_seconds": 1.0000000000000022,
+      "query_selection": {
+        "start_seconds": 48,
+        "max_duration_seconds": 38
+      },
+      "query_duration_seconds": 38.0,
+      "reference_duration_seconds": 157.884,
+      "window_seconds": 6,
+      "median_absolute_ncc": 0.8917170807565818,
+      "offset_spread_seconds": 0.0,
+      "timing_ambiguous": false,
+      "windows": [
+        {
+          "query_start_seconds": 1.0,
+          "reference_start_seconds": 2.0,
+          "reference_base_seconds": 1.0,
+          "absolute_ncc": 0.9355192456827852,
+          "peak_to_p99_ratio": 5.456304094782194,
+          "unconstrained_reference_start_seconds": 2.0,
+          "source_query_start_seconds": 49.0
+        },
+        {
+          "query_start_seconds": 16.0,
+          "reference_start_seconds": 17.0,
+          "reference_base_seconds": 1.0,
+          "absolute_ncc": 0.8400380875296081,
+          "peak_to_p99_ratio": 5.875965384614419,
+          "unconstrained_reference_start_seconds": 17.0,
+          "source_query_start_seconds": 64.0
+        },
+        {
+          "query_start_seconds": 31.0,
+          "reference_start_seconds": 32.0,
+          "reference_base_seconds": 1.0,
+          "absolute_ncc": 0.8917170807565818,
+          "peak_to_p99_ratio": 6.678401361106837,
+          "unconstrained_reference_start_seconds": 32.0,
+          "source_query_start_seconds": 79.0
+        }
+      ],
+      "method": "Joint multi-window waveform NCC over resampled reference speeds",
+      "interpretation": "Heuristic same-recording evidence, not an identification probability. Pitch-only changes, key-locked stretching, covers, repeated motifs and edits need additional review."
+    }
+  },
+  "media_included": false,
+  "note": "A case observation, not a general benchmark or redistribution license."
+}

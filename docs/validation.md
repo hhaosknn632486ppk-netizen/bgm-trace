@@ -1,6 +1,21 @@
 # Validation status
 
-Recorded on 2026-11-18. These are executed checks, not a general music-identification accuracy claim.
+Updated on 2026-11-19. Older version sections preserve their original observation scope. These are executed checks, not a general music-identification accuracy claim.
+
+## Version 0.4 music-library recovery
+
+The local Windows suite passed **94 tests**. New tests generate their own media and cover selected-passage timestamps and reference excerpts, actual AAC in a misleading `.mp3` filename, stable changed-file selection, unrelated/corrupt candidates, ambiguous matching files, identical duplicates, unchanged caches, invalid baselines and limits, files changing during inspection/copy, no overwrite, optional-transcode failure, source-clue provenance and blocked desktop observations. Desktop guard tests do not send real UI input or establish that an app search succeeded.
+
+Separate live/private checks used the [Jianying case](jianying-case.md):
+
+- The new Windows helper on Jianying Pro 11.8.0.14778 opened the known task draft, navigated the music library, entered Chinese text and showed the target title/artist. A real foreground change stopped an attempted action. This is an observed agent-driven sequence, not universal unattended search.
+- The normal app download had already occurred on November 18. The new importer read that exact cached file, detected M4A/AAC despite its `.mp3` name, retained byte identity and created a distinct MP3. Unchanged-cache collection correctly reported no new file.
+- A controlled replay placed the real library recording and unrelated generated audio into an isolated music directory after a snapshot. The collector selected only the verified recording and retained the source/clue-report identity. This was not a fresh native-app download.
+- Direct selection of full-video 48–86 seconds matched reference 1–39 seconds at 1.0×. Original-mixture and separated-track checks both passed; median absolute NCC was 0.4031 and 0.8917 respectively, with zero offset spread and no competing placement. These checks reproduced the earlier case result.
+
+Native desktop screenshot/input assistance is Windows-only and experimental. Local media collection/import/comparison is separately exercised by the cross-platform test suite. No app credentials, private IPC, draft decryption, full-cache copying or commercial audio are included. The live checks used the existing installation/account state; they do not establish anonymous or subscription-independent access to every catalog asset. Consult release CI for each OS/Python result.
+
+The skill structure validator and relative documentation links passed. A wheel and source distribution were built; a new Windows CPython 3.12.13 environment installed the wheel and completed synthetic AAC-with-MP3-name import, selected-passage verification and listening-copy output outside the checkout. A separately copied skill ran the same workflow with its own module path verified, so it did not depend on the installed engine as a fallback. Packaged Python sources were compared with the checkout. These checks do not install optional Demucs/PyTorch in the new environment or imply a clean native-app installation test.
 
 ## Version 0.3 alternate acquisition
 
@@ -29,7 +44,7 @@ Two live public Bilibili reads were performed:
 
 Both comment collections reached the exposed API end, expanded accessible reply threads and accounted for the reported comment totals at collection time. This does not establish access to deleted/private/withheld comments. Full collected documents were reviewed in the development session; audience text and profile captures are retained outside this repository.
 
-The second example validates finding a creator-supplied lead outside a fingerprint result. It does **not** establish that Shazam cannot identify this clip: no new fingerprint test was run for that example. Nor was the creator's claimed recording independently audio-verified; an accessible authoritative reference recording was not obtained from the targeted web searches.
+At the version 0.2 checkpoint, the second example validated finding a creator-supplied lead, but no new fingerprint test or independent audio verification had yet been completed for it. The later native-library acquisition and recording checks are documented in the version 0.4 section and [follow-up case](jianying-case.md). Neither checkpoint establishes that the song is absent from all mainstream catalogs.
 
 The Douyin path is currently a browser workflow plus offline evidence import. Its synthetic capture tests are not a live Douyin comment-access test. No universal automatic Douyin comment collector is claimed. Consult CI for the test count and results on each published revision.
 
@@ -62,5 +77,5 @@ An earlier packaged run encountered Shazam `RateLimited` after scanning the raw 
 - No broad corpus or controlled comparison against NetEase/Kugou/mobile apps has been run.
 - No guarantee of complete speech/effect removal; no new human listening evaluation of every exported variant is claimed.
 - Linux/other Python versions are covered by the repository's CI configuration; consult the actual Actions result for each revision rather than inferring success from this file.
-- GPU dependency installation on another machine, CPU runtime, URLs outside the tested Bilibili case, independent pitch/tempo edits, covers and long-form mixed sets remain unbenchmarked.
+- GPU dependency installation on another machine, CPU performance across a corpus, URLs outside the documented cases, independent pitch/tempo edits, covers and long-form mixed sets remain unbenchmarked. The later Jianying case records one executed CPU separation run, not a runtime guarantee.
 - Recognition requires an external unofficially accessed catalog. Offline processing cannot identify an unknown song from that catalog.

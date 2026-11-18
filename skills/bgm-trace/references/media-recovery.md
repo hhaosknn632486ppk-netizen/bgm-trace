@@ -14,6 +14,8 @@ Use available web/search/browser capabilities with the exact video title and cre
 
 Read the source/comment report as described in [source-investigation.md](source-investigation.md). Follow an actual music credit through to a playable recording and acquire it when available for the requested use; do not stop at repeating the title. An editing-app sound name can guide a search even when it is absent from mainstream recognition catalogs.
 
+For a named app music library, continue with [library-recovery.md](library-recovery.md): ordinary UI download/export, scoped file reception or explicit cached-file import, actual-format decoding and selected-passage verification. Windows Jianying has an experimental observed-window helper described there.
+
 Compare the uploader, content, duration and edit to assess alternate videos. A visually identical repost may have replaced the soundtrack, so those checks alone do not verify the audio. If the requested audio is available, compare it to the alternate. If it is unavailable, deliver a promising candidate with the creator/source evidence and say that its relationship to the original remains unverified. A candidate need not be withheld merely because audio verification is not yet possible.
 
 The CLI does not perform web searches by itself. The skill uses the host's available search/browser tools for discovery, then can try a discovered URL/file with:
