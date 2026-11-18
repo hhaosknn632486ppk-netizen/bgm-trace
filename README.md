@@ -6,6 +6,8 @@ Identify music underneath dialogue in short videos. Extract audio, compare multi
 
 This is an independent workflow implementation built on existing tools. **Source separation, audio fingerprinting, multi-window recognition, and reference correlation already exist.** See [related projects and overlap](docs/related-projects.md). This is an early release, not a new recognition model or a demonstrated replacement for every mobile recognition app.
 
+Version 0.2 adds a source-investigation fallback: when fingerprint recognition or reference verification is inconclusive, inspect the supplied video link, creator information and comment threads for leads. Public Bilibili collection is automated; other platforms have an agent/browser workflow and evidence import. **Douyin comments are not claimed to be automatically accessible.**
+
 ## Install
 
 Python 3.10+ is required. From a downloaded/cloned checkout:
@@ -48,6 +50,21 @@ Default analysis is the first 90 seconds; select another interval with `--start 
 
 `--separate auto` first scans the original mixture and separates when it lacks a two-window consensus. For known dialogue-heavy media, use `always`: this separates first and prioritizes fingerprint requests for the requested music layer. A confident raw match can still refer to dialogue samples or sound effects. The CLI preserves candidates rather than treating the top result as proven.
 
+## Investigate source clues
+
+Online identification defaults to `--clues auto`: an inconclusive result triggers source investigation when a supplied source link is available. Use `--source-url URL` for a local audio input, `--clues always` to investigate regardless of the fingerprint result, or `--clues never` to disable the automatic collector. Offline identification never reads online source pages.
+
+```console
+bgm-trace investigate "https://b23.tv/xQwffio" --online --out jobs/source-clues.json
+bgm-trace investigate "https://www.douyin.com/video/123456789" --evidence capture.json --out jobs/reviewed-clues.json
+```
+
+The second URL is a synthetic format example. The Bilibili collector reads the description, paginated comments, expanded replies, creator profile and a bounded creator-work listing. Default limits are 200 API requests, 100 pages per comment thread, and 3 creator-work pages; adjust `--max-requests`, `--max-pages`, and `--author-pages` as needed. Access/rate limits stop the service. Budget exhaustion, empty-but-counted comments and incomplete reply threads are explicitly reported.
+
+The skill then reads the collected material and continues incomplete areas with available web/browser tools. For platforms without a direct collector, the CLI writes a browser handoff; that is not a completed search. External browser captures can be analyzed without further network requests. See the [source-investigation workflow and capture schema](skills/bgm-trace/references/source-investigation.md).
+
+`clues.json` contains all collected documents, parent/reply relationships, ranked leads and coverage. Keyword ranking is not an exhaustive semantic review. A bare song title under a song question may be useful; a movie title may be irrelevant to the BGM. Every textual lead remains unverified until independently checked against candidate audio. Collected comments/profiles belong in a private job folder, not the open-source repository.
+
 ## Skill installation
 
 Copy `skills/bgm-trace` into your agent's skill directory, for example `~/.codex/skills/bgm-trace`. The folder includes the same Python implementation as the CLI, so standalone copying does not lose the engine. Install its dependencies into your chosen environment:
@@ -67,6 +84,7 @@ Invoke `$bgm-trace` with a local video or link. The skill describes how to inter
 | `music.wav`, `music.mp3` | Optional model-separated derivative; residual speech/effects may remain |
 | `report.json`, `report.txt` | Source identity, parameters, per-window outcomes, candidate agreement, warnings |
 | `alignment.json` | Local reference hashes, estimated speed/start, correlations across separate windows |
+| `clues.json`, `clues.txt` | Local source/creator/comment evidence, unverified leads and actual reading coverage |
 | exported excerpt + JSON sidecar | Explicitly reference-derived audio; **not** an extracted source stem |
 
 Reports omit absolute input paths and signed download URLs. They can still contain filenames, video titles, track metadata and source identities: review them before sharing. Media remains in the chosen job directory.

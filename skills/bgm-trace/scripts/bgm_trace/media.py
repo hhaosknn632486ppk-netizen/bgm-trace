@@ -88,7 +88,7 @@ def listening_copy(source: Path, target: Path) -> None:
 
 def safe_url(url: str) -> str:
     parts = urllib.parse.urlsplit(url)
-    kept = [(key, value) for key, value in urllib.parse.parse_qsl(parts.query) if key in {"v", "p", "id"}]
+    kept = [(key, value) for key, value in urllib.parse.parse_qsl(parts.query) if key in {"v", "p", "id", "modal_id", "aweme_id", "music_id"}]
     host = parts.hostname or ""
     return urllib.parse.urlunsplit((parts.scheme, host, parts.path, urllib.parse.urlencode(kept), ""))
 

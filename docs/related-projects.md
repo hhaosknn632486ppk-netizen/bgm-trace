@@ -16,7 +16,7 @@ Its [comparison script](https://github.com/Snoop2023/video-background-music-iden
 
 Its [separation script](https://github.com/Snoop2023/video-background-music-identification-skill/blob/ad61b9753be54f86048faee9383e8963705f2cb7/skills/video-background-music-identification/scripts/separate_vocals.py) uses Demucs' two-stem CLI. BGM Trace loads the official `htdemucs_ft` vocal specialist and subtracts estimated vocals from the source. This is an implementation choice, not a demonstrated universal separation improvement. Both depend on Demucs.
 
-BGM Trace does not currently implement the closest project's HPSS path or comprehensive metadata/visual-clue workflow. Its narrower focus is a reproducible audio pipeline. Features may change after the inspected revisions.
+BGM Trace does not currently implement the closest project's HPSS path or visual-clue workflow. Version 0.2 adds a source/creator/comment fallback, with automated public Bilibili pagination and a browser evidence workflow for other platforms. Metadata research already exists in the closest project's instructions; the fallback is not claimed as a novel idea. Features may change after the inspected revisions.
 
 ## What is and is not original
 

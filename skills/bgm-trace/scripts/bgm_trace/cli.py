@@ -35,6 +35,17 @@ def build_parser() -> argparse.ArgumentParser:
     identify.add_argument("--window-seconds", type=float, default=12.)
     identify.add_argument("--max-download-mib", type=int, default=100)
     identify.add_argument("--reference", type=Path, help="Optional local reference; no automatic full-track download.")
+    identify.add_argument("--clues", choices=["auto", "always", "never"], default="auto", help="Investigate supplied source links when recognition/verification is inconclusive.")
+    identify.add_argument("--source-url", action="append", default=[], help="User-supplied source link, especially for a local audio input; repeat for more links.")
+    investigate = commands.add_parser("investigate", help="Read source/author/comments, or analyze a browser evidence capture.")
+    investigate.add_argument("source")
+    investigate.add_argument("--out", type=Path, required=True)
+    method = investigate.add_mutually_exclusive_group(required=True)
+    method.add_argument("--online", action="store_true")
+    method.add_argument("--evidence", type=Path, nargs="+", help="Local JSON capture(s); no network calls in this mode.")
+    investigate.add_argument("--max-pages", type=int, default=100)
+    investigate.add_argument("--max-requests", type=int, default=200)
+    investigate.add_argument("--author-pages", type=int, default=3)
     comparison = commands.add_parser("verify", help="Check a local reference, including playback-speed changes.")
     comparison.add_argument("query", type=Path)
     comparison.add_argument("reference", type=Path)
@@ -59,6 +70,10 @@ def _report_text(report: dict) -> str:
     if "verification" in report:
         result = report["verification"]
         lines += ["", f"Local reference evidence passed: {result['evidence_passed']}", f"Speed: {result['speed_factor']:.6f}; reference start: {result['reference_start_seconds']:.3f}s"]
+    for investigation in report.get("source_investigations", []):
+        lines += ["", f"Source clues: {investigation['file']}; {investigation['status']}",
+                  "Coverage complete: " + str(investigation["coverage_complete"]),
+                  "Text leads require audio verification; read the full documents and coverage gaps."]
     lines += ["", "Candidate agreement alone does not prove the requested sound layer or composition.", "Separated music may contain speech/effects; reference-derived audio is a different artifact role."]
     return "\n".join(lines) + "\n"
 
@@ -118,6 +133,25 @@ def identify(args: argparse.Namespace) -> int:
             from .alignment import verify
             report["verification"] = verify(music if music_ready else prepared, args.reference)
             save_json(job / "alignment.json", report["verification"])
+        inconclusive = (report["recognition"]["status"] != "candidate_consensus"
+                        or report["recognition"]["availability"] != "completed"
+                        or ("verification" in report and not report["verification"]["evidence_passed"]))
+        if args.online and args.clues != "never" and (args.clues == "always" or inconclusive):
+            from .clues import collect, write_report
+            sources = list(args.source_url)
+            if report["source"].get("url"):
+                sources.insert(0, report["source"]["url"])
+            if not sources:
+                report["warnings"].append("Source clues need a user-supplied link; add --source-url or use investigate.")
+            for index, url in enumerate(dict.fromkeys(sources)):
+                print("Investigating supplied source/author/comments...", file=sys.stderr)
+                try:
+                    clues = collect(url)
+                    name = "clues.json" if index == 0 else f"clues-{index + 1}.json"
+                    write_report(clues, job / name)
+                    report.setdefault("source_investigations", []).append({"file": name, "source_url": clues["source_url"], "status": clues["status"], "coverage_complete": clues["coverage_complete"]})
+                except (TraceError, OSError, ValueError) as exc:
+                    report["warnings"].append(f"Source investigation failed ({type(exc).__name__}); audio artifacts were retained.")
         save_json(job / "report.json", report)
         (job / "report.txt").write_text(_report_text(report), encoding="utf-8")
         print(_report_text(report), end="")
@@ -140,6 +174,16 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{package}: {'available' if importlib.util.find_spec(package) else 'not installed'}")
         elif args.command == "identify":
             return identify(args)
+        elif args.command == "investigate":
+            from .clues import collect, import_evidence, write_report
+            if args.out.exists() or args.out.with_suffix(".txt").exists():
+                raise TraceError("Source investigation output already exists; choose a new filename.")
+            if args.out.suffix.lower() != ".json":
+                raise TraceError("Source investigation output must be a .json file.")
+            result = import_evidence(args.source, args.evidence) if args.evidence else collect(args.source, args.max_pages, args.max_requests, args.author_pages)
+            write_report(result, args.out)
+            print(f"Source investigation: {result['status']}; {len(result['documents'])} documents; coverage complete: {result['coverage_complete']}")
+            print(f"Report: {args.out}")
         elif args.command == "verify":
             from .alignment import verify
             if args.out.exists():

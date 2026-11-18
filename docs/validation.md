@@ -1,6 +1,25 @@
 # Validation status
 
-Recorded on 2026-11-18 for BGM Trace 0.1.0. These are executed checks, not a general music-identification accuracy claim.
+Recorded on 2026-11-18. These are executed checks, not a general music-identification accuracy claim.
+
+## Version 0.2 source investigation
+
+The source-investigation tests cover root pagination, complete reply expansion, nested question/answer context, creator attribution, rate/access blocks, false empty responses, repeated cursors, exhausted budgets, offline evidence import, untrusted imported verification claims, preservation of reports, and automatic fallback routing. The original audio tests remain in the suite.
+
+Two live public Bilibili reads were performed:
+
+| Source | Actual coverage | Finding / limit |
+| --- | --- | --- |
+| `BV1ctRZYGEsQ` | 25 root comments + 60 replies = 85; source description and creator profile | No explicit music lead in the read material. Creator work listing was blocked by the public service. |
+| `BV1VuCwBTEkV` | 144 root comments + 348 replies = 492; source description, creator profile, 30 creator-work titles/descriptions | A creator reply gave a music name and a follow-up identified the editing app's music library. The creator-work listing reported 508 entries and stopped with an access/rate error after 30, so creator-history coverage stays partial. |
+
+Both comment collections reached the exposed API end, expanded accessible reply threads and accounted for the reported comment totals at collection time. This does not establish access to deleted/private/withheld comments. Full collected documents were reviewed in the development session; audience text and profile captures are retained outside this repository.
+
+The second example validates finding a creator-supplied lead outside a fingerprint result. It does **not** establish that Shazam cannot identify this clip: no new fingerprint test was run for that example. Nor was the creator's claimed recording independently audio-verified; an accessible authoritative reference recording was not obtained from the targeted web searches.
+
+The Douyin path is currently a browser workflow plus offline evidence import. Its synthetic capture tests are not a live Douyin comment-access test. No universal automatic Douyin comment collector is claimed. Consult CI for the test count and results on each published revision.
+
+## Original version 0.1 audio validation
 
 ## Local checks
 
