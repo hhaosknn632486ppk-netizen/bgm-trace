@@ -7,6 +7,7 @@ import json
 import math
 from pathlib import Path
 import sys
+from tempfile import TemporaryDirectory
 from datetime import datetime, timezone
 
 from . import __version__
@@ -161,13 +162,26 @@ def _prepare_audio(args: argparse.Namespace, report: dict, job: Path) -> bool:
         folder.mkdir()
         attempt = {"input": input_identity(value), "role": "requested" if index == 0 else "alternate"}
         stage = "acquire"
+        artifact = None
+        extracted = folder / "source.wav"
+
+        def extract_download(source: Path) -> None:
+            nonlocal artifact, stage
+            stage = "extract"
+            with TemporaryDirectory(dir=folder) as scratch:
+                candidate = Path(scratch) / extracted.name
+                result = extract(source, candidate, args.start, args.duration)
+                candidate.rename(extracted)
+                artifact = result
+
         try:
-            source, metadata = acquire(value, folder, args.max_download_mib)
+            source, metadata = acquire(value, folder, args.max_download_mib, extract_download)
             report["source"] = metadata
             attempt["source"] = metadata
             stage = "extract"
-            artifact = extract(source, folder / "source.wav", args.start, args.duration)
-            (folder / "source.wav").rename(job / "source.wav")
+            if artifact is None:
+                artifact = extract(source, extracted, args.start, args.duration)
+            extracted.rename(job / "source.wav")
             report["artifacts"].append(artifact)
             report["input_attempts"].append({**attempt, "status": "ready"})
             relationship = "requested_input" if index == 0 else "unverified_alternative"

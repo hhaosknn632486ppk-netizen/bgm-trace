@@ -258,7 +258,9 @@ class WindowsDesktop:
                 self.key(13, 2)
         elif args.key == "SelectAll":
             self.select_all()
-        else:
-            code = 27 if args.key == "Escape" else 13
+        elif args.key in {"Escape", "Enter"}:
+            code = {"Escape": 27, "Enter": 13}[args.key]
             self.key(code)
             self.key(code, 2)
+        else:
+            raise TraceError("The key action requires --key Enter, Escape or SelectAll.")

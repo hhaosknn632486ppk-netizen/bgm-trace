@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+from typing import Callable
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -85,21 +86,32 @@ def extract(source: Path, target: Path, start: float = 0, duration: float = 90) 
     return {"file": target.name, "role": "source_extraction", "seconds": info.duration, "sample_rate": info.samplerate, "channels": info.channels, "sha256": digest(target)}
 
 
-def read_mono(path: Path, rate: int = 4000, maximum: float = 600, start: float = 0.) -> np.ndarray:
+def audio_stream_args(audio_stream: int | None) -> list[str]:
+    if audio_stream is None:
+        return []
+    if type(audio_stream) is not int or audio_stream < 0:
+        raise TraceError("Audio stream index must be a nonnegative integer.")
+    return ["-map", f"0:a:{audio_stream}"]
+
+
+def read_mono(path: Path, rate: int = 4000, maximum: float = 600, start: float = 0., *,
+              audio_stream: int | None = None, strict: bool = False) -> np.ndarray:
     if not np.isfinite([start, maximum]).all() or start < 0 or not 0 < maximum <= 601:
         raise TraceError("Use a nonnegative start and a bounded positive audio duration.")
     # Avoid a zero-time seek: some AAC demuxers handle leading samples differently
     # when seeking. Preserve whole-file decoding and its existing time origin.
     seek = ["-ss", f"{start:.8f}"] if start > 0 else []
-    payload = run_ffmpeg([*seek, "-i", str(path), "-t", str(maximum), "-vn", "-ac", "1", "-ar", str(rate), "-f", "f32le", "pipe:1"], capture=True)
+    errors = ["-xerror"] if strict else []
+    payload = run_ffmpeg([*errors, *seek, "-i", str(path), *audio_stream_args(audio_stream),
+                          "-t", str(maximum), "-vn", "-ac", "1", "-ar", str(rate), "-f", "f32le", "pipe:1"], capture=True)
     result = np.frombuffer(payload, dtype="<f4").astype(np.float64)
     if not result.size or not np.isfinite(result).all():
         raise TraceError("Audio is empty or contains non-finite samples.")
     return result
 
 
-def listening_copy(source: Path, target: Path) -> None:
-    run_ffmpeg(["-n", "-i", str(source), "-c:a", "libmp3lame", "-b:a", "320k", str(target)])
+def listening_copy(source: Path, target: Path, *, audio_stream: int | None = None) -> None:
+    run_ffmpeg(["-n", "-i", str(source), *audio_stream_args(audio_stream), "-c:a", "libmp3lame", "-b:a", "320k", str(target)])
 
 
 def safe_url(url: str) -> str:
@@ -170,7 +182,7 @@ def _bilibili_data(payload: dict) -> dict:
     return payload["data"]
 
 
-def _acquire_bilibili(value: str, job: Path, limit: int) -> tuple[Path, dict]:
+def _acquire_bilibili(value: str, job: Path, limit: int, check_audio: Callable[[Path], None]) -> tuple[Path, dict]:
     parts = urllib.parse.urlsplit(value)
     match = re.search(r"/video/(BV[0-9A-Za-z]{10})", parts.path)
     if not match:
@@ -200,11 +212,12 @@ def _acquire_bilibili(value: str, job: Path, limit: int) -> tuple[Path, dict]:
             attempt = {"audio_id": track.get("id"), "stream_number": len(seen)}
             try:
                 _download(url, target, limit, canonical)
-                _check_audio(target)
+                source_sha256 = digest(target)
+                check_audio(target)
                 stream_attempts.append({**attempt, "status": "ready"})
                 return target, {"kind": "bilibili", "url": canonical, "bvid": bvid, "page": requested_page,
                                 "cid": cid, "title": info.get("title"), "audio_id": track.get("id"),
-                                "source_sha256": digest(target), "stream_attempts": stream_attempts}
+                                "source_sha256": source_sha256, "stream_attempts": stream_attempts}
             except AcquisitionStop:
                 raise
             except urllib.error.HTTPError as exc:
@@ -223,7 +236,7 @@ class _QuietDownloaderLog:
     info = warning = error = debug
 
 
-def _acquire_ytdlp(value: str, job: Path, limit: int) -> tuple[Path, dict]:
+def _acquire_ytdlp(value: str, job: Path, limit: int, check_audio: Callable[[Path], None]) -> tuple[Path, dict]:
     try:
         from yt_dlp import YoutubeDL
 
@@ -244,8 +257,10 @@ def _acquire_ytdlp(value: str, job: Path, limit: int) -> tuple[Path, dict]:
             raise TraceError("No media was downloaded; check availability or the size limit.")
         if target.stat().st_size > limit:
             raise AcquisitionStop("Download exceeded --max-download-mib.")
-        _check_audio(target)
-        return target, {"kind": "yt-dlp", "url": safe_url(info.get("webpage_url") or value), "title": info.get("title"), "source_sha256": digest(target)}
+        metadata = {"kind": "yt-dlp", "url": safe_url(info.get("webpage_url") or value),
+                    "title": info.get("title"), "source_sha256": digest(target)}
+        check_audio(target)
+        return target, metadata
     except ImportError as exc:
         raise TraceError("Install yt-dlp for this URL; local files and public Bilibili audio also work.") from exc
     except TraceError:
@@ -254,7 +269,9 @@ def _acquire_ytdlp(value: str, job: Path, limit: int) -> tuple[Path, dict]:
         raise TraceError("The general extractor could not obtain playable audio; investigate another source.") from exc
 
 
-def acquire(value: str, job: Path, max_download_mib: int = 100) -> tuple[Path, dict]:
+def acquire(value: str, job: Path, max_download_mib: int = 100,
+            check_audio: Callable[[Path], None] = _check_audio) -> tuple[Path, dict]:
+    """Acquire media, checking each remote candidate before accepting its route."""
     identity = input_identity(value)
     if identity["kind"] == "local":
         local = Path(value).expanduser().resolve()
@@ -286,7 +303,7 @@ def acquire(value: str, job: Path, max_download_mib: int = 100) -> tuple[Path, d
         route_dir = job / ("acquire-" + method)
         route_dir.mkdir(parents=True, exist_ok=False)
         try:
-            target, metadata = handler(value, route_dir, max_download_mib * 1024 * 1024)
+            target, metadata = handler(value, route_dir, max_download_mib * 1024 * 1024, check_audio)
             attempts.append({"method": method, "status": "ready"})
             return target, {**metadata, "acquisition_attempts": attempts}
         except Exception as exc:

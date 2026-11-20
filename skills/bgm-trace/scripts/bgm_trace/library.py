@@ -12,11 +12,12 @@ import subprocess
 import time
 
 from .alignment import verify
-from .media import TraceError, digest, ffmpeg, listening_copy, read_mono, safe_url, save_json
+from .media import TraceError, audio_stream_args, digest, ffmpeg, listening_copy, read_mono, safe_url, save_json
 
 MEDIA_SUFFIXES = {".mp3", ".m4a", ".aac", ".wav", ".flac", ".ogg", ".opus", ".mp4", ".webm", ".mka"}
 MAX_FILES = 10000
 MAX_BYTES = 256 * 1024 * 1024
+REFERENCE_AUDIO_STREAM = 0
 
 
 def _regular(path: Path) -> bool:
@@ -86,36 +87,47 @@ def _baseline(cache: Path, path: Path) -> dict:
 
 def inspect_audio(path: Path) -> dict:
     """Probe actual bytes, then decode the complete supported (<=600 s) audio."""
-    _signature(path)
+    size = _signature(path)["size"]
     try:
         probe = subprocess.run([ffmpeg(), "-hide_banner", "-nostdin", "-protocol_whitelist", "file,pipe",
-                                "-i", str(path), "-map", "0:a:0", "-t", "0", "-f", "null", "-"],
+                                "-i", str(path), *audio_stream_args(REFERENCE_AUDIO_STREAM), "-t", "0", "-f", "null", "-"],
                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=30, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise TraceError("Library media probe did not complete.") from exc
     header = probe.stderr.decode("utf-8", errors="replace").split("Stream mapping:")[0]
     if probe.returncode:
         raise TraceError("Candidate does not contain decodable ordinary audio.")
-    audio = re.search(r"Stream #0:\d+[^\n]*?Audio: ([^,\s]+)[^\n]*?, (\d+) Hz, ([^,\n]+)", header)
-    if not audio or any("Video:" in line and "attached pic" not in line for line in header.splitlines() if "Stream #0:" in line):
+    streams = [line for line in header.splitlines() if "Stream #0:" in line]
+    first_audio = next((line for line in streams if "Audio:" in line), "")
+    audio = re.search(r"Audio: ([^,\s]+).*?, (\d+) Hz, ([^,\n]+)", first_audio)
+    if not audio or any("Video:" in line and "attached pic" not in line for line in streams):
         raise TraceError("Library import expects audio, not a video or encrypted asset.")
     with path.open("rb") as stream:
         magic = stream.read(64)
+    is_wave = magic[:4] in {b"RIFF", b"RF64"} and magic[8:12] == b"WAVE"
+    if is_wave:
+        # FFmpeg may accept a short PCM data chunk at a packet boundary.
+        declared = int.from_bytes(magic[4:8], "little")
+        if magic[:4] == b"RF64" and magic[12:16] == b"ds64":
+            declared = int.from_bytes(magic[20:28], "little")
+        if declared not in {0, 0xffffffff, 0xffffffffffffffff} and declared + 8 > size:
+            raise TraceError("WAVE file is shorter than its declared size.")
     formats = [(magic[4:8] == b"ftyp", ".m4a", "M4A"),
                (magic[:4] == b"fLaC", ".flac", "FLAC"),
-               (magic[:4] in {b"RIFF", b"RF64"} and magic[8:12] == b"WAVE", ".wav", "WAVE"),
+               (is_wave, ".wav", "WAVE"),
                (magic[:4] == b"OggS", ".ogg", "Ogg"),
                (audio[1] == "mp3", ".mp3", "MP3"),
                (audio[1] == "aac" and magic[:1] == b"\xff", ".aac", "ADTS AAC")]
     detected = next(((suffix, container) for valid, suffix, container in formats if valid), None)
     if detected is None:
         raise TraceError("Unsupported native audio container; use the app's ordinary audio export.")
-    samples = read_mono(path, maximum=601)
+    samples = read_mono(path, maximum=601, audio_stream=REFERENCE_AUDIO_STREAM, strict=True)
     seconds = len(samples) / 4000
     if seconds > 600:
         raise TraceError("Library import currently supports complete tracks up to 600 seconds.")
     return {"extension": detected[0], "container": detected[1], "codec": audio[1],
             "sample_rate": int(audio[2]), "channel_layout": audio[3], "seconds": seconds,
+            "audio_stream": REFERENCE_AUDIO_STREAM,
             "original_extension": path.suffix.lower(), "extension_corrected": path.suffix.lower() != detected[0],
             "complete_audio_decoded": True}
 
@@ -126,7 +138,8 @@ def inspect_candidate(path: Path, query: Path | None, start: float, duration: fl
     media = inspect_audio(path)
     result = {"file": path.name, "sha256": identity, "media": media}
     if query is not None:
-        result["verification"] = verify(query, path, query_start=start, query_duration=duration)
+        result["verification"] = verify(query, path, query_start=start, query_duration=duration,
+                                        reference_audio_stream=media["audio_stream"])
     if _signature(path) != before or digest(path) != identity:
         raise TraceError("Candidate changed while being inspected; wait for the download to finish.")
     return result
@@ -204,7 +217,8 @@ def _select(report: dict, paths: dict[str, Path], job: Path, query: Path | None,
         listening = job / "reference-listening.mp3"
         existed = listening.exists()
         try:
-            listening_copy(job / report["artifacts"][0]["file"], listening)
+            listening_copy(job / report["artifacts"][0]["file"], listening,
+                           audio_stream=chosen["media"]["audio_stream"])
             report["artifacts"].append({"file": listening.name, "role": "transcoded_listening_copy", "sha256": digest(listening)})
         except (OSError, TraceError):
             if not existed:
@@ -212,7 +226,7 @@ def _select(report: dict, paths: dict[str, Path], job: Path, query: Path | None,
             report["warnings"] = ["Native audio is retained, but the optional MP3 listening copy failed."]
     if "verification" in chosen:
         alignment = dict(chosen["verification"])
-        alignment["reference"] = {"file": report["artifacts"][0]["file"], "sha256": chosen["sha256"]}
+        alignment["reference"] = {**alignment["reference"], "file": report["artifacts"][0]["file"], "sha256": chosen["sha256"]}
         save_json(job / "alignment.json", alignment)
     return _save(report, job)
 
