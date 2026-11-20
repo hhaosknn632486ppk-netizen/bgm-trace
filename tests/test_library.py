@@ -1,5 +1,6 @@
 import json
 import shutil
+import wave
 
 import numpy as np
 import pytest
@@ -54,6 +55,43 @@ def test_interval_positions_and_reference_excerpt(tmp_path, sounds):
     export_reference(reference, result, output)
     assert sf.info(output).duration == pytest.approx(12, abs=.01)
     assert verify(output, reference, speed_min=1, speed_max=1)["reference_start_seconds"] == pytest.approx(3, abs=.01)
+
+
+def test_truncated_wave_is_rejected_even_if_the_requested_passage_matches(tmp_path, sounds):
+    reference, _, _ = sounds
+    with wave.open(str(reference), "rb") as audio:
+        missing_bytes = audio.getframerate() * audio.getsampwidth()
+    truncated = tmp_path / "truncated.wav"
+    truncated.write_bytes(reference.read_bytes()[:-missing_bytes])
+    job = tmp_path / "job"
+    assert main(["library-import", str(truncated), "--query", str(reference), "--duration", "8", "--out", str(job)]) == 2
+    report = json.loads((job / "library-report.json").read_text())
+    assert report["status"] == "error" and not report["artifacts"]
+    assert "declared size" in report["error"]
+
+
+def test_library_uses_the_first_audio_stream_for_evidence_and_exports(tmp_path, sounds):
+    reference, other, query = sounds
+    multitrack = tmp_path / "multitrack.m4a"
+    run_ffmpeg(["-n", "-i", str(reference), "-i", str(other),
+                "-filter_complex", "[1:a]pan=stereo|c0=c0|c1=c0[other]",
+                "-map", "0:a:0", "-map", "[other]", "-c:a", "aac",
+                "-disposition:a:0", "0", "-disposition:a:1", "default", str(multitrack)])
+
+    job = tmp_path / "job"
+    result = library.import_file(multitrack, job, query=query, start=7, duration=12, mp3=True)
+    assert result["status"] == "verified"
+    media = result["candidates"][0]["media"]
+    assert media["audio_stream"] == 0 and media["channel_layout"] == "mono"
+    assert digest(job / "reference.m4a") == digest(multitrack)
+    listening = job / "reference-listening.mp3"
+    assert sf.info(listening).channels == 1
+    assert verify(query, listening, query_start=7, query_duration=12)["evidence_passed"]
+    alignment = json.loads((job / "alignment.json").read_text())
+    assert alignment["reference"]["audio_stream"] == 0
+    excerpt = job / "excerpt.flac"
+    assert export_reference(job / "reference.m4a", alignment, excerpt)["reference_audio_stream"] == 0
+    assert verify(excerpt, reference)["evidence_passed"]
 
 
 def watch_setup(tmp_path):
@@ -219,7 +257,7 @@ def test_video_and_invalid_audio_rejected(tmp_path, sounds):
 
 def test_optional_transcode_failure_retains_native_evidence(tmp_path, sounds, monkeypatch):
     reference, _, _ = sounds
-    def broken(source, target):
+    def broken(source, target, *, audio_stream=None):
         target.write_bytes(b"partial")
         raise TraceError("transcoding failed")
     monkeypatch.setattr(library, "listening_copy", broken)

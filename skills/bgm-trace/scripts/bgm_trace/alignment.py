@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 from scipy.signal import correlate, butter, sosfiltfilt
 
-from .media import TraceError, digest, read_mono, run_ffmpeg, save_json
+from .media import TraceError, audio_stream_args, digest, read_mono, run_ffmpeg, save_json
 
 
 def ncc(reference: np.ndarray, query: np.ndarray) -> np.ndarray:
@@ -117,11 +117,15 @@ def align_arrays(query: np.ndarray, reference: np.ndarray, sample_rate: int = 40
     return {"evidence_passed": bool(passed), "speed_factor": float(estimated_speed), "reference_start_seconds": float(offset), "query_duration_seconds": seconds, "reference_duration_seconds": len(reference) / sample_rate, "sample_rate": sample_rate, "window_seconds": window, "median_absolute_ncc": best["median_correlation"], "offset_spread_seconds": best["offset_spread_seconds"], "timing_ambiguous": best.get("timing_ambiguous", False), "windows": hits, "searched_speed_range": [speed_min, speed_max], "method": "Joint multi-window waveform NCC over resampled reference speeds", "interpretation": "Heuristic same-recording evidence, not an identification probability. Pitch-only changes, key-locked stretching, covers, repeated motifs and edits need additional review."}
 
 
-def verify(query: Path, reference: Path, *, query_start: float = 0., query_duration: float = 600., **options) -> dict:
+def verify(query: Path, reference: Path, *, query_start: float = 0., query_duration: float = 600.,
+           reference_audio_stream: int | None = None, **options) -> dict:
     if not np.isfinite([query_start, query_duration]).all() or query_start < 0 or not 4 <= query_duration <= 600:
         raise TraceError("Verification needs a nonnegative query start and a duration of 4-600 seconds.")
-    result = align_arrays(read_mono(query, start=query_start, maximum=query_duration), read_mono(reference), **options)
+    result = align_arrays(read_mono(query, start=query_start, maximum=query_duration),
+                          read_mono(reference, audio_stream=reference_audio_stream), **options)
     result.update(query={"file": query.name, "sha256": digest(query)}, reference={"file": reference.name, "sha256": digest(reference)}, analysis_limit_seconds=600)
+    if reference_audio_stream is not None:
+        result["reference"]["audio_stream"] = reference_audio_stream
     result["query_selection"] = {"start_seconds": query_start, "max_duration_seconds": query_duration}
     for window in result["windows"]:
         window["source_query_start_seconds"] = query_start + window["query_start_seconds"]
@@ -131,7 +135,8 @@ def verify(query: Path, reference: Path, *, query_start: float = 0., query_durat
 def export_reference(reference: Path, alignment: dict, output: Path) -> dict:
     if not alignment.get("evidence_passed"):
         raise TraceError("Reference export requires a passing alignment report.")
-    if digest(reference) != alignment.get("reference", {}).get("sha256"):
+    reference_identity = alignment.get("reference", {})
+    if digest(reference) != reference_identity.get("sha256"):
         raise TraceError("Reference hash differs from the file used in the alignment report.")
     speed = float(alignment["speed_factor"])
     start = float(alignment["reference_start_seconds"])
@@ -145,8 +150,13 @@ def export_reference(reference: Path, alignment: dict, output: Path) -> dict:
         raise TraceError("Choose an MP3, FLAC or WAV output filename.")
     output.parent.mkdir(parents=True, exist_ok=True)
     encoder = {".mp3": ["-c:a", "libmp3lame", "-b:a", "320k"], ".flac": ["-c:a", "flac"], ".wav": ["-c:a", "pcm_s24le"]}[output.suffix.lower()]
+    stream = reference_identity.get("audio_stream")
     # Resample to a known input rate before changing playback speed.
-    run_ffmpeg(["-n", "-ss", f"{start:.8f}", "-i", str(reference), "-af", f"aresample=44100,asetrate={44100 * speed:.8f},aresample=44100:filter_size=64", "-t", f"{duration:.8f}", *encoder, str(output)])
+    run_ffmpeg(["-n", "-ss", f"{start:.8f}", "-i", str(reference), *audio_stream_args(stream),
+                "-af", f"aresample=44100,asetrate={44100 * speed:.8f},aresample=44100:filter_size=64",
+                "-t", f"{duration:.8f}", *encoder, str(output)])
     note = {"file": output.name, "role": "reference_derived_excerpt", "not_a_separated_stem": True, "reference_file": reference.name, "reference_sha256": digest(reference), "speed_factor": speed, "reference_start_seconds": start, "seconds": duration, "sha256": digest(output)}
+    if stream is not None:
+        note["reference_audio_stream"] = stream
     save_json(output.with_suffix(output.suffix + ".json"), note)
     return note

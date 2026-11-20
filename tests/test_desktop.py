@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from bgm_trace.cli import main
 from bgm_trace.desktop import read_observation
 from bgm_trace.media import TraceError, digest
 from bgm_trace.windows_desktop import WindowsDesktop, _png
@@ -66,3 +67,17 @@ def test_outside_and_covered_clicks_send_no_input(tmp_path):
     desktop.owner = lambda handle: 999
     with pytest.raises(TraceError, match="covers"):
         desktop.act(args, frame)
+
+
+def test_cli_key_requires_an_explicit_key_before_consuming_observation(tmp_path, capsys):
+    path, _ = observation(tmp_path)
+    assert main(["jianying-desktop", "key", "--frame", str(path)]) == 2
+    assert "requires --key" in capsys.readouterr().err
+    assert not path.with_suffix(".json.used").exists()
+
+
+def test_backend_never_dispatches_a_missing_key():
+    desktop = object.__new__(WindowsDesktop)
+    desktop.key = lambda *args: pytest.fail("A missing key must not send input")
+    with pytest.raises(TraceError, match="requires --key"):
+        desktop.act(SimpleNamespace(action="key", key=None), {})
