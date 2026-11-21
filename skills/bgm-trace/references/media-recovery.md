@@ -21,7 +21,7 @@ Compare the uploader, content, duration and edit to assess alternate videos. A v
 The CLI does not perform web searches by itself. The skill uses the host's available search/browser tools for discovery, then can try a discovered URL/file with:
 
 ```console
-python scripts/bgm_trace_cli.py identify ORIGINAL_URL --alternate-input ALTERNATE_URL --out NEW_JOB --online --separate always
+python scripts/bgm_trace_cli.py identify ORIGINAL_URL --alternate-input ALTERNATE_URL --out NEW_JOB --online
 ```
 
 Up to four alternates are attempted in order only if earlier acquisition/decoding fails. Failed downloads/extractions stay in separate input folders. The same `--start` and `--duration` apply to every input, so use a separate job with appropriate timing for a differently edited clip or a full music track. Attach the original URL via `--source-url` and explain the relationship when using such a separate job. Offline mode requires all inputs to be local.

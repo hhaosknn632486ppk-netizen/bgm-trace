@@ -12,6 +12,7 @@ BGM Trace's original orchestration code is MIT licensed. Dependencies and extern
 | [imageio-ffmpeg](https://github.com/imageio/imageio-ffmpeg) | Finding a separately installed FFmpeg binary | Wrapper license and binary notices in the package |
 | [FFmpeg](https://ffmpeg.org/) | Decoding, resampling and export | [LGPL/GPL conditions depend on the binary build](https://ffmpeg.org/legal.html) |
 | [PyTorch](https://github.com/pytorch/pytorch) | Optional Demucs inference | Upstream BSD-style license and dependency notices |
+| [faster-whisper](https://github.com/SYSTRAN/faster-whisper) / [CTranslate2](https://github.com/OpenNMT/CTranslate2) | Optional local lyric transcription | Upstream MIT licenses; model weights/tokenizers have their own source and terms and are not bundled |
 
 The MIT license on this repository does not relicense dependencies, recordings, model weights, or recognition services. ShazamIO's open-source status does not make Shazam's service an open-source or availability-guaranteed catalog. Source separation does not establish permission to redistribute an input or reference recording.
 

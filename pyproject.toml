@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bgm-trace"
-version = "0.4.0"
-description = "Trace music in dialogue-heavy video with separation, multi-window recognition, and speed-aware reference checks."
+version = "0.5.0"
+description = "Trace video music with voice-aware routing, uncertain lyric drafts, fingerprints, source clues, and reference checks."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -15,6 +15,7 @@ dependencies = ["numpy>=1.26,<3", "scipy>=1.11,<2", "soundfile>=0.12,<0.14", "im
 
 [project.optional-dependencies]
 separate = ["demucs>=4.0,<5"]
+lyrics = ["faster-whisper>=1.2.1,<2"]
 dev = ["pytest>=8,<10", "build>=1,<2"]
 
 [project.scripts]

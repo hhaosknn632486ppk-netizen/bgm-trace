@@ -16,6 +16,10 @@ private/
 *.onnx
 *.th
 *.pt
+*.bin
+*.safetensors
+lyrics.json
+lyrics.txt
 .env*
 *cookies*
 clues*.json

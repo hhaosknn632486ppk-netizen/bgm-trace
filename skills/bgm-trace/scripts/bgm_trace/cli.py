@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from . import __version__
 from .media import TraceError, acquire, extract, ffmpeg, input_identity, listening_copy, save_json
 from .recognition import recognize_file, summarize
+from .vocals import VOICE_ROLES, plan as vocal_plan
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -26,6 +27,8 @@ def build_parser() -> argparse.ArgumentParser:
     network.add_argument("--online", action="store_true", help="Allow Shazam fingerprint requests for this job.")
     network.add_argument("--offline", action="store_true", help="Local input only; extract/separate without recognition or model download.")
     identify.add_argument("--separate", choices=["auto", "always", "never"], default="auto")
+    identify.add_argument("--voice-role", choices=VOICE_ROLES, default="unknown", help="Caller-reviewed role in this input/interval; auto removes only added speech.")
+    identify.add_argument("--voice-evidence", default="", help="Brief basis for the voice assessment, not an automatic classifier result.")
     identify.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     identify.add_argument("--model-repo", type=Path, help="Trusted local official Demucs checkpoint directory.")
     identify.add_argument("--shifts", type=int, choices=range(1, 5), default=2)
@@ -38,6 +41,16 @@ def build_parser() -> argparse.ArgumentParser:
     identify.add_argument("--clues", choices=["auto", "always", "never"], default="auto", help="Investigate supplied source links when audio is unavailable or recognition/verification is inconclusive.")
     identify.add_argument("--source-url", action="append", default=[], help="User-supplied source link, especially for a local audio input; repeat for more links.")
     identify.add_argument("--alternate-input", action="append", default=[], help="Try another discovered URL/local file if audio preparation fails; repeat up to four times. Matching the original is not assumed.")
+    lyrics = commands.add_parser("lyrics", help="Draft uncertain lyrics locally for subsequent unrestricted web search; does not identify a song.")
+    lyrics.add_argument("input", type=Path, help="Local original audio/video, retaining musical vocals.")
+    lyrics.add_argument("--out", type=Path, required=True, help="New or empty private job directory.")
+    lyrics.add_argument("--model", type=Path, required=True, help="Trusted local faster-whisper model directory; never downloaded by this command.")
+    lyrics.add_argument("--comparison-model", type=Path, help="Optional second cached model; disagreements remain visible.")
+    lyrics.add_argument("--window", action="append", required=True, help="START:END in seconds relative to the supplied input; repeat up to 8, each 4-45 seconds.")
+    lyrics.add_argument("--analysis-audio", type=Path, help="Optional aligned vocal estimate, for analysis only; must have the same time origin/length as input.")
+    lyrics.add_argument("--language", help="Known language code; omit to detect, without artist/lyric prompting.")
+    lyrics.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
+    lyrics.add_argument("--compute-type", choices=["int8", "float16", "float32"], default="int8")
     investigate = commands.add_parser("investigate", help="Read source/author/comments, or analyze a browser evidence capture.")
     investigate.add_argument("source")
     investigate.add_argument("--out", type=Path, required=True)
@@ -106,6 +119,10 @@ def _report_text(report: dict) -> str:
     if preparation.get("relationship_to_requested_source") == "unverified_alternative":
         lines += ["Analyzed an alternate input; its correspondence to the requested video is not audio-verified.",
                   "Recognition/reference results below apply to that alternate recording.", ""]
+    if "vocal_assessment" in report:
+        voice = report["vocal_assessment"]
+        lines += [f"Voice role (caller review): {voice['role']}", voice["reason"],
+                  f"Recognition input: {voice.get('recognition_input', 'not analyzed')}", ""]
     for item in report["recognition"]["candidates"]:
         lines += [f"{item['title']} — {item['artist']}", f"Independent windows: {item['independent_windows']}; layers: {', '.join(item['layers'])}", str(item.get("url") or ""), ""]
     for error in report.get("warnings", []):
@@ -193,9 +210,10 @@ def _prepare_audio(args: argparse.Namespace, report: dict, job: Path) -> bool:
 
 
 def identify(args: argparse.Namespace) -> int:
+    voice = vocal_plan(args.voice_role, args.separate, args.voice_evidence)
     if args.offline and not Path(args.input).expanduser().is_file():
         raise TraceError("--offline requires a local media file.")
-    if args.offline and args.separate == "always" and args.model_repo is None:
+    if args.offline and voice["separate"] and args.model_repo is None:
         raise TraceError("Offline separation requires --model-repo with trusted cached weights.")
     if len(args.alternate_input) > 4:
         raise TraceError("Use at most four alternate inputs per job.")
@@ -211,6 +229,7 @@ def identify(args: argparse.Namespace) -> int:
     job.mkdir(parents=True, exist_ok=True)
     report = {"schema_version": 1, "tool_version": __version__, "created_at": datetime.now(timezone.utc).isoformat(), "source": input_identity(args.input), "selection": {"start_seconds": args.start, "max_duration_seconds": args.duration}, "artifacts": [], "attempts": [], "warnings": []}
     report["requested_source"] = dict(report["source"])
+    report["vocal_assessment"] = voice
     try:
         print("Extracting audio...", file=sys.stderr)
         prepared = job / "source.wav"
@@ -218,36 +237,52 @@ def identify(args: argparse.Namespace) -> int:
             _investigate_sources(args, report, job, inconclusive=True)
             _finish_report(report, job)
             return 2
-        if args.online and args.separate != "always":
+        if report["audio_preparation"]["relationship_to_requested_source"] == "unverified_alternative" and args.separate == "auto":
+            # An alternate upload may change both music and narration. Review it separately.
+            report["requested_vocal_assessment"] = voice
+            voice = vocal_plan("unknown", "auto", "Alternate recording needs its own voice assessment.")
+            report["vocal_assessment"] = voice
+        needs_separation = voice["separate"]
+        if args.online and not needs_separation:
             print("Recognizing source windows...", file=sys.stderr)
             report["attempts"] += asyncio.run(recognize_file(prepared, "source", job, args.windows, args.window_seconds))
         decision = summarize(report["attempts"])
-        needs_separation = args.separate == "always" or (args.separate == "auto" and args.online and decision["status"] != "candidate_consensus")
         music = job / "music.wav"
         music_ready = False
         if needs_separation:
-            print("Separating dialogue/vocals...", file=sys.stderr)
+            print("Separating caller-assessed speech/vocals; preserving source...", file=sys.stderr)
             try:
                 from .separation import separate
                 artifact = separate(prepared, music, args.device, args.shifts, args.model_repo)
                 music_ready = True
                 report["artifacts"].append(artifact)
-                listening_copy(music, job / "music.mp3")
-                report["artifacts"].append({"file": "music.mp3", "role": "listening_copy_of_model_separated_music"})
+                try:
+                    listening_copy(music, job / "music.mp3")
+                    report["artifacts"].append({"file": "music.mp3", "role": "listening_copy_of_model_separated_music"})
+                except Exception as exc:
+                    (job / "music.mp3").unlink(missing_ok=True)
+                    report["warnings"].append(f"Optional listening export failed ({type(exc).__name__}); separated WAV remains available for recognition.")
                 if args.online and decision["availability"] != "rate_limited":
                     print("Recognizing separated windows...", file=sys.stderr)
                     report["attempts"] += asyncio.run(recognize_file(music, "music", job, args.windows, args.window_seconds))
             except Exception as exc:
                 message = str(exc) if isinstance(exc, TraceError) else f"Separation failed ({type(exc).__name__}); source recognition evidence was retained."
                 report["warnings"].append(message)
-        if args.online and args.separate == "always" and not music_ready:
+        if args.online and needs_separation and not music_ready:
             print("Recognizing source after separation was unavailable...", file=sys.stderr)
             report["attempts"] += asyncio.run(recognize_file(prepared, "source", job, args.windows, args.window_seconds))
+        voice["recognition_input"] = "music.wav" if music_ready else "source.wav"
+        if needs_separation and not music_ready:
+            report["warnings"].append("Voice removal was unavailable; source fallback still contains the original voices.")
+        if args.separate == "always" and args.voice_role == "unknown":
+            report["warnings"].append("Explicit separation without a voice-role assessment can remove musical vocals as well as speech.")
         report["recognition"] = summarize(report["attempts"])
         if report["recognition"]["availability"] == "rate_limited":
             report["warnings"].append("Shazam rate-limited this run. Further recognition requests stopped; local artifacts and reference checking remain available.")
         if args.offline:
             report["recognition"]["status"] = "offline_prepared"
+        if report["recognition"]["status"] != "candidate_consensus":
+            report.setdefault("next_steps", []).append("Review the voice role in the original audio. For musical vocals, use lyrics on short intervals, mark uncertain words, and search without restricting the artist; text matches still need audio verification.")
         if args.reference:
             print("Verifying local reference...", file=sys.stderr)
             from .alignment import verify
@@ -274,10 +309,17 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "doctor":
             print(f"BGM Trace {__version__}; Python {sys.version.split()[0]}")
             print("FFmpeg: " + ffmpeg())
-            for package in ["numpy", "scipy", "soundfile", "shazamio", "yt_dlp", "demucs", "torch"]:
+            for package in ["numpy", "scipy", "soundfile", "shazamio", "yt_dlp", "demucs", "torch", "faster_whisper"]:
                 print(f"{package}: {'available' if importlib.util.find_spec(package) else 'not installed'}")
         elif args.command == "identify":
             return identify(args)
+        elif args.command == "lyrics":
+            from .lyrics import transcribe
+            result = transcribe(args.input, args.out, args.model, args.window,
+                                comparison_model=args.comparison_model, analysis_audio=args.analysis_audio,
+                                language=args.language, device=args.device, compute_type=args.compute_type)
+            print(f"Lyrics: {result['status']}; not verified lyrics or song identification. Read uncertain spans and variants in {args.out / 'lyrics.txt'}")
+            return 2 if result["status"] in {"asr_unavailable", "partial_draft"} else 0
         elif args.command == "investigate":
             from .clues import collect, import_evidence, write_report
             if args.out.exists() or args.out.with_suffix(".txt").exists():

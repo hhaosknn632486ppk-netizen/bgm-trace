@@ -1,23 +1,35 @@
 ---
 name: bgm-trace
-description: Find and obtain background music from videos or noisy audio, then verify the recording. Use separation, fingerprints, creator/comment clues and accessible music libraries, including Jianying; not general video editing.
+description: Find and obtain music from videos or noisy audio, preserve vocals belonging to the song, search uncertain lyric drafts without artist restrictions, and verify candidate recordings. Use fingerprints, creator/comment clues and music libraries including Jianying; not general video editing.
 ---
 
 # BGM Trace
 
-Use the self-contained entrypoint `scripts/bgm_trace_cli.py` with the chosen Python environment. Run `doctor` first if this environment has not been checked. Install `scripts/requirements.txt` when needed; Demucs/PyTorch are optional additional dependencies for separation. Avoid assuming another chat's absolute tool, environment or model paths exist.
+Use the self-contained entrypoint `scripts/bgm_trace_cli.py` with the chosen Python environment. Run `doctor` first if this environment has not been checked. Install `scripts/requirements.txt` when needed; Demucs/PyTorch and `scripts/requirements-lyrics.txt` are optional for separation and local ASR respectively. Avoid assuming another chat's absolute tool, environment or model paths exist.
 
 ## Analyze the requested sound layer
 
 Accept a local audio/video file, public Bilibili URL/BV ID, or another yt-dlp URL. Preserve the user's target interval. Start with a representative short interval for long media; the default is the first 90 seconds and each job is limited to 600 seconds. Use a new work directory outside source control.
 
 ```console
-python scripts/bgm_trace_cli.py identify INPUT --out JOB_DIRECTORY --online --separate always
+python scripts/bgm_trace_cli.py identify INPUT --out JOB_DIRECTORY --online --voice-role unknown
 ```
 
 `--online` means external fingerprint requests. When the user has already asked to identify a song using online services, that authorization is sufficient; do not ask again merely for this flag. If they require local-only handling, use `--offline` with a local input. Offline separation additionally requires `--model-repo` and already-installed dependencies. Do not imply an offline run can search Shazam's catalog.
 
-For known dialogue-heavy mixtures or a requested instrumental, use `--separate always`. Otherwise `auto` first checks the raw mixture and separates only when two independent windows do not agree. A raw consensus can identify a dialogue sample or sound effect rather than the intended music. Inspect per-window results and layer provenance. `music.mp3` is a listening export, not proof of complete voice removal.
+**Assess the voice role before deciding to remove it.** Read [references/vocal-content.md](references/vocal-content.md). Compare the voiced passage with its musical context and any available reference; use the user's clarification when available. Singing, rap, chants, choirs and spoken samples can belong to the song. Keep them with `--voice-role song`. For confirmed added narration/dialogue, use `--voice-role speech`: `auto` separates before fingerprinting. For mixed voices or insufficient evidence, use `mixed` or `unknown` and retain the original. A failed recognition or ASR detecting words is not evidence of added speech.
+
+The CLI applies the caller's assessment; it is not an automatic semantic voice classifier. `auto` now separates **only** assessed `speech`, including offline jobs with cached weights. `--separate never` preserves all voices. `always` remains an explicit manual removal request for known speech or a separately requested instrumental; it conflicts with `song`/`mixed`. Do not use it to bypass the assessment for ordinary song identification. Alternate recordings need their own assessment. A raw consensus can identify a dialogue sample or effect, so inspect per-window/layer evidence. Preserve `source.wav`; `music.mp3` is a derivative and is not proof of complete voice removal.
+
+## Search lyrics when identification is inconclusive
+
+When usable musical vocals exist and fingerprints or source clues do not settle the song, read [references/lyric-search.md](references/lyric-search.md). Transcribe short passages from the original, compare another model or an aligned analysis-only vocal estimate when useful, and mark uncertain words as `[? word]`, alternatives as `[? option A / option B]`, and unintelligible spans as `[unclear]`. Never turn an ASR guess into a polished definitive lyric.
+
+```console
+python scripts/bgm_trace_cli.py lyrics ORIGINAL --model LOCAL_MODEL --comparison-model SECOND_LOCAL_MODEL --window 30:55 --window 100:120 --language en --out LYRIC_JOB
+```
+
+The optional local helper writes `lyrics.json` and `lyrics.txt` with timestamps, raw variants, heuristic flags and suggested search snippets; it does **not** execute web searches. A single ASR pass stays marked unreviewed. Read the original and all relevant variants, then use available web/search tools for short exact phrases, looser fragments and explicitly uncertain alternatives. Search without a singer/band restriction; a user-suggested artist is only an optional lead, never the entire search space. Save actual queries, useful links and unresolved spans in the private job. Verify candidate audio before declaring identification. No search result does not prove unreleased music or absence from a catalog. If the user stops the search, stop rather than automatically expanding it.
 
 ## Handle unavailable audio
 
@@ -50,7 +62,8 @@ Read `report.json`. Keep multiple candidates when the video changes music or the
 Use connected search/web capabilities to find a matching catalog page, artist/creator upload, attached platform sound or authorized preview. A mainstream catalog listing is not required. The CLI does not automatically search for a full song. A reference supplied by the user or obtained from an accessible source for the requested use can be checked locally:
 
 ```console
-python scripts/bgm_trace_cli.py verify JOB_DIRECTORY/music.wav REFERENCE --out JOB_DIRECTORY/alignment.json
+python scripts/bgm_trace_cli.py verify JOB_DIRECTORY/source.wav REFERENCE --out JOB_DIRECTORY/alignment.json
+# Use music.wav instead only for an assessed speech-removal derivative.
 # A middle passage in a full-length query, without creating a separate cut
 python scripts/bgm_trace_cli.py verify FULL_QUERY REFERENCE --start 48 --duration 38 --out JOB_DIRECTORY/middle-alignment.json
 ```
@@ -75,4 +88,4 @@ For Windows native UI automation, read [references/jianying-desktop.md](referenc
 
 ## Handoff
 
-Provide the usable audio obtained and link to its actual source, with the title/artist or source claim when available. Explain what supports its relationship to the requested music; an acquired candidate can be delivered for listening before confirmation. Distinguish extraction, source separation, alternate recordings and reference-derived files. Report residual speech or unverified listening quality honestly. An interface error, no match, and a conflicting match are different outcomes. Keep commercial media, secrets, signed CDN links, model weights and private absolute paths out of public repositories; the report itself may still contain user-supplied filenames and titles.
+Provide the usable audio obtained and link to its actual source, with the title/artist or source claim when available. Explain what supports its relationship to the requested music; an acquired candidate can be delivered for listening before confirmation. Distinguish extraction, source separation, alternate recordings and reference-derived files. State why voices were kept or removed. Label lyric drafts and uncertain spans explicitly, and quote only the short fragments needed for the result. Report residual speech or unverified listening quality honestly. An interface error, no match, and a conflicting match are different outcomes. Keep commercial media, full lyric transcripts, secrets, signed CDN links, model weights and private absolute paths out of public repositories; the report itself may still contain user-supplied filenames and titles.

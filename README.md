@@ -2,9 +2,11 @@
 
 **[中文说明](README.zh-CN.md)** · CLI + self-contained Codex skill · MIT
 
-Identify music underneath dialogue in short videos. Extract audio, compare multiple recognition windows, optionally remove vocals, and check a candidate against a local reference while searching playback-speed changes.
+Identify music in short videos. Review whether voices belong to the song, preserve musical vocals, remove assessed added speech, and combine fingerprints, uncertain lyric drafts and source clues with reference-audio checks.
 
 This is an independent workflow implementation built on existing tools. **Source separation, audio fingerprinting, multi-window recognition, and reference correlation already exist.** See [related projects and overlap](docs/related-projects.md). This is an early release, not a new recognition model or a demonstrated replacement for every mobile recognition app.
+
+**Version 0.5 preserves song vocals by default and adds a lyric-search fallback.** `--separate auto` now removes only caller-assessed added speech; a fingerprint miss no longer triggers vocal removal. Optional local ASR retains uncertain words, timestamps and alternate readings. The skill searches without restricting the artist, then verifies candidates against audio. Voice-role assessment and web research remain agent/user judgments, not an autonomous classifier or search engine.
 
 Version 0.2 adds a source-investigation fallback: when fingerprint recognition or reference verification is inconclusive, inspect the supplied video link, creator information and comment threads for leads. Version 0.2.1 also continues this investigation when acquiring or decoding the audio fails. Public Bilibili collection is automated; other platforms have an agent/browser workflow and evidence import. **Douyin comments are not claimed to be automatically accessible.**
 
@@ -35,24 +37,40 @@ PyTorch's CUDA support depends on its installed build. CPU mode works but is slo
 
 ```console
 # Public Bilibili links/BV IDs, other yt-dlp URLs, or a local file
-bgm-trace identify "https://b23.tv/EXAMPLE" --out jobs/example --online --separate always
+bgm-trace identify "https://b23.tv/EXAMPLE" --out jobs/example --online
 bgm-trace identify "clip.mp4" --out jobs/local --online
+# After reviewing voices: musical vocals are preserved; added speech is separated first.
+bgm-trace identify "song-video.mp4" --voice-role song --out jobs/song --online
+bgm-trace identify "narrated-video.mp4" --voice-role speech --out jobs/dialogue --online
 
 # Extraction only: no recognition request or model download
 bgm-trace identify "clip.mp4" --out jobs/offline --offline --separate never
 
 # A local, authorized reference recording is needed for independent checking
-bgm-trace verify jobs/example/music.wav reference.mp3 --out jobs/example/alignment.json
+bgm-trace verify jobs/example/source.wav reference.mp3 --out jobs/example/alignment.json
 
 # Optional derivative, clearly labeled as coming from the reference
 bgm-trace export-reference reference.mp3 --alignment jobs/example/alignment.json --out jobs/example/reference-excerpt.mp3
 ```
 
-For offline separation use `--offline --separate always --model-repo PATH` with installed dependencies and trusted cached weights. No model downloads occur in that mode.
+For offline added-speech separation use `--offline --voice-role speech --model-repo PATH` with installed dependencies and trusted cached weights. No model downloads occur in that mode.
 
 Default analysis is the first 90 seconds; select another interval with `--start 120 --duration 60` (maximum 600 seconds). Downloads are limited to 100 MiB by default. Choose a **new or empty** output directory for each run. The CLI does not silently overwrite earlier jobs.
 
-`--separate auto` first scans the original mixture and separates when it lacks a two-window consensus. For known dialogue-heavy media, use `always`: this separates first and prioritizes fingerprint requests for the requested music layer. A confident raw match can still refer to dialogue samples or sound effects. The CLI preserves candidates rather than treating the top result as proven.
+**Behavior change from 0.4:** `--separate auto` keeps the source for `song`, `mixed`, `unknown` (default) and `none`; only `speech` separates before recognition. Use `--voice-evidence "BASIS"` to record the assessment. A supplied alternate recording resets auto routing to unknown and needs its own review. `--separate never` preserves all voices; `always` is an explicit removal override and rejects conflict with `song`/`mixed`. Failed separation falls back to the source with a warning. Demucs cannot selectively distinguish narration from singing. A confident raw match can still refer to dialogue samples or effects. See [voice assessment](skills/bgm-trace/references/vocal-content.md).
+
+## Lyric fallback, with uncertainty
+
+If musical vocals are available but identification remains inconclusive, keep the original and draft short passages locally:
+
+```console
+python -m pip install ".[lyrics]"
+bgm-trace lyrics original.wav --model LOCAL_MODEL --comparison-model SECOND_LOCAL_MODEL --window 30:55 --window 105:125 --language en --out jobs/lyrics
+```
+
+The second model is optional. Models must be trusted, complete local faster-whisper directories; this command does not download weights or upload audio. CPU/int8 is the default. For a standalone skill, install `scripts/requirements-lyrics.txt`. Optional `--analysis-audio` accepts an already aligned vocal estimate for analysis only and never replaces the original. Selected window coverage is checked; correct alignment still needs caller verification.
+
+`lyrics.txt` marks doubtful words as `[? word]` and unreadable spans as `[unclear]`. `lyrics.json` keeps raw variants, input/model hashes, timestamps and heuristic reasons. Single-pass output stays uncertain. Agreement across models or processed layers is not proof; ASR can hallucinate in music or silence. Short query suggestions avoid uncertain gaps and contain no artist restriction. **The CLI does not search the web.** The skill reviews the audio and variants, searches exact/loose phrases and tentative alternatives using host search tools, follows source clues and checks candidate recordings. A suggested band is only a lead; no hit does not prove unreleased music. See the [full lyric workflow](skills/bgm-trace/references/lyric-search.md).
 
 ## When a link cannot provide audio
 
@@ -65,13 +83,13 @@ Version 0.3 first tries public Bilibili standalone audio backups/other audio for
 Use the skill's search/browser tools to find another relevant upload, credited sound page or accessible music recording. The CLI itself does not search the web. Pass up to four discovered alternatives with `--alternate-input`; only failed acquisition/decoding advances to the next input. Reports preserve the original request, each attempt and the selected source. Results from alternate media are explicitly scoped to that recording, with its relationship to the original unverified:
 
 ```console
-bgm-trace identify "ORIGINAL_URL" --alternate-input "ALTERNATE_URL" --out jobs/another-route --online --separate always
+bgm-trace identify "ORIGINAL_URL" --alternate-input "ALTERNATE_URL" --out jobs/another-route --online
 ```
 
 The same start/duration apply to all queued inputs. Use a separate job for another edit or a full music track requiring different timing. After applicable accessible routes are exhausted, continue with a local video/audio file or a user-provided recording containing system audio, preserving the original source:
 
 ```console
-bgm-trace identify "recording.mp4" --source-url "https://b23.tv/EXAMPLE" --out jobs/local-recovery --online --separate always
+bgm-trace identify "recording.mp4" --source-url "https://b23.tv/EXAMPLE" --out jobs/local-recovery --online
 ```
 
 Host playback capture can be used when suitable tools exist; the CLI itself does not record the screen. A promising acquired candidate may be delivered with its source and unverified status even when the original audio is unavailable. Distinguish unavailable audio, imperfect separation and an actual fingerprint `no_match`. See the [alternate-media workflow](skills/bgm-trace/references/media-recovery.md).
@@ -130,6 +148,7 @@ Invoke `$bgm-trace` with a local video or link. The skill describes how to inter
 | `source.wav` | Decoded source mixture; still contains dialogue/effects |
 | `music.wav`, `music.mp3` | Optional model-separated derivative; residual speech/effects may remain |
 | `report.json`, `report.txt` | Source identity, parameters, per-window outcomes, candidate agreement, warnings |
+| `lyrics.json`, `lyrics.txt` | Private, unverified lyric drafts, uncertain spans, model/layer variants and suggested unrestricted queries; no web search is implied |
 | `alignment.json` | Local reference hashes, estimated speed/start, correlations across separate windows |
 | `clues.json`, `clues.txt` | Local source/creator/comment evidence, unverified leads and actual reading coverage |
 | `library-report.json`, `reference.<actual-extension>` | Catalog/source claims, candidate checks and a byte-identical ordinary library file |
@@ -156,4 +175,4 @@ Tests generate their own audio: shifted/speed-changed positives, unrelated negat
 
 ## Dependencies and rights
 
-Our orchestration code is MIT licensed. Demucs, ShazamIO, yt-dlp, NumPy, SciPy, SoundFile and FFmpeg retain their own licenses; see [third-party notes](THIRD_PARTY_NOTICES.md). Recognition services and media have separate terms and rights. This repository contains no commercial recordings, credentials, cookies, model weights, or client secrets. The tool does not bypass login/payment restrictions or automatically download entire identified songs.
+Our orchestration code is MIT licensed. Demucs, ShazamIO, yt-dlp, faster-whisper/CTranslate2, NumPy, SciPy, SoundFile and FFmpeg retain their own licenses; see [third-party notes](THIRD_PARTY_NOTICES.md). Recognition services and media have separate terms and rights. This repository contains no commercial recordings, lyric transcripts, credentials, cookies, model weights, or client secrets. The tool does not bypass login/payment restrictions or automatically download entire identified songs.

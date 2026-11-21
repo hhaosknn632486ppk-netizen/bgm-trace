@@ -1,4 +1,4 @@
 interface:
   display_name: "BGM Trace 视频识曲"
-  short_description: "识别带对白视频中的背景音乐，分离人声并核验原曲速度与时间位置"
-  default_prompt: "用 $bgm-trace 识别这个视频的背景音乐，提供去人声版本并核对识曲依据。"
+  short_description: "先判断人声用途，保留歌曲演唱，结合存疑歌词、来源线索与音频核验识曲"
+  default_prompt: "用 $bgm-trace 找出这个视频的音乐。先判断人声是否属于歌曲；保留演唱，只移除确认的额外对白。必要时转写并标注存疑歌词，不限歌手搜索，再核验候选音频。"

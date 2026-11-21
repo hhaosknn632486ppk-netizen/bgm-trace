@@ -1,6 +1,18 @@
 # Validation status
 
-Updated on 2026-11-19. Older version sections preserve their original observation scope. These are executed checks, not a general music-identification accuracy claim.
+Updated on 2026-11-21. Older version sections preserve their original observation scope. These are executed checks, not a general music-identification accuracy claim.
+
+## Version 0.5 voice routing and lyric drafts
+
+The local Windows suite passed **121 tests**. Added regression tests cover preservation of song/mixed/unknown/absent voices after no match, separation before fingerprinting for assessed speech, source fallback on separation failure, recognition despite optional listening-export failure, offline cached-model requirements, rejection of conflicting forced removal, and resetting an assessment for alternate media. The tests validate routing from supplied judgments, not automatic classification of real voices.
+
+Lyric tests use invented text and generated audio. They cover model disagreement, low/missing word evidence, uncertain single-pass drafts, suspicious repetition/silence, missing-word insertions, timestamp mismatches, exact-query boundaries, duplicate model/audio evidence, local-only model loading, unavailable models, uncovered intervals, sanitized failures, source preservation and no overwrite. ASR engines are stubbed in CI; these tests do not measure lyric transcription accuracy.
+
+A separate private Windows CPU/int8 smoke run executed the new helper with faster-whisper 1.2.1 and existing local Whisper large-v3-turbo and small.en weights on one **33-second** music-video interval. Each model processed the original and an aligned, previously estimated vocal copy: **4 runs completed** in about **38 seconds** on this installation. The primary draft had 59 words, 36 marked uncertain under the helper's caution rules; 3 short query suggestions were generated. Those counts are not a lyric-accuracy evaluation. No web search was executed during this smoke check, and no song identification is claimed. The source SHA-256 was unchanged; the `song` offline route retained the original and produced no removed-vocal derivative.
+
+The voice review remains an agent/user task using the original, context and available reference recordings. The lyric helper marks heuristic uncertainty and retains raw variants; even agreeing models can be wrong. Host search still needs to inspect actual results and verify candidate audio. Commercial audio, full transcription drafts and model weights remain outside the repository. The earlier inconclusive search motivated the workflow; it is not a successful recognition benchmark.
+
+Skill structure and relative documentation links passed. A wheel installed into a separate target and a separately copied skill each ran the new voice-preservation and timestamped lyric-draft workflows on generated audio with an ASR stub; their module paths were checked to exclude a checkout fallback. These installation checks reused existing core dependencies, rather than validating a clean install of optional ASR/GPU packages. Packaged Python sources matched the reviewed checkout, and source/skill archives excluded private media, transcripts and model weights.
 
 ## Version 0.4 music-library recovery
 
