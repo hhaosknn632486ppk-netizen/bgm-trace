@@ -240,3 +240,19 @@ def test_source_clue_identity_is_bound_without_copying_private_text(tmp_path, so
     assert result["source_context"]["urls"] == ["https://example.com/watch?v=abc"]
     assert "do not publish" not in json.dumps(result)
     assert "secret" not in json.dumps(result) and str(tmp_path) not in json.dumps(result)
+
+
+def test_webm_opus_and_id3_adts_aac_containers_are_supported(tmp_path, sounds):
+    reference, _, _ = sounds
+    mka = tmp_path / "track.mka"
+    run_ffmpeg(["-n", "-i", str(reference), "-t", "5", "-c:a", "aac", "-f", "matroska", str(mka)])
+    mka_media = library.inspect_audio(mka)
+    assert mka_media["extension"] == ".mka" and mka_media["container"] == "Matroska"
+
+    adts = tmp_path / "raw.aac"
+    run_ffmpeg(["-n", "-i", str(reference), "-t", "5", "-c:a", "aac", "-f", "adts", str(adts)])
+    id3_adts = tmp_path / "tagged.aac"
+    # Minimal 10-byte ID3v2.3 header with 0 payload bytes prepended to valid ADTS frames.
+    id3_adts.write_bytes(b"ID3\x03\x00\x00\x00\x00\x00\x00" + adts.read_bytes())
+    aac_media = library.inspect_audio(id3_adts)
+    assert aac_media["extension"] == ".aac" and aac_media["container"] == "ADTS AAC"

@@ -228,18 +228,25 @@ def _acquire_ytdlp(value: str, job: Path, limit: int) -> tuple[Path, dict]:
         from yt_dlp import YoutubeDL
 
         def size_guard(progress):
-            if progress.get("downloaded_bytes", 0) > limit:
+            if (progress.get("downloaded_bytes") or 0) > limit:
                 raise AcquisitionStop("Download exceeded --max-download-mib.")
+
+        def playlist_guard(info, *, incomplete=False):
+            if info.get("playlist_autonumber") is not None:
+                raise AcquisitionStop("Playlists are not supported; provide a single video.")
+            return None
 
         options = {"format": "bestaudio/best", "noplaylist": True, "outtmpl": str(job / "download.%(ext)s"),
                    "quiet": True, "no_warnings": True, "logger": _QuietDownloaderLog(), "socket_timeout": 25,
                    "retries": 0, "fragment_retries": 0, "extractor_retries": 0, "max_filesize": limit,
-                   "progress_hooks": [size_guard], "overwrites": False, "ffmpeg_location": ffmpeg()}
+                   "progress_hooks": [size_guard], "match_filter": playlist_guard, "overwrites": False, "ffmpeg_location": ffmpeg()}
         with YoutubeDL(options) as downloader:
             info = downloader.extract_info(value, download=True)
             if not info or info.get("entries") is not None:
                 raise TraceError("Playlists are not supported; provide a single video.")
-            target = Path(downloader.prepare_filename(info))
+            downloads = info.get("requested_downloads") or []
+            filepath = downloads[0].get("filepath") if downloads and isinstance(downloads[0], dict) else None
+            target = Path(filepath or downloader.prepare_filename(info))
         if not target.resolve().is_relative_to(job.resolve()) or not target.is_file():
             raise TraceError("No media was downloaded; check availability or the size limit.")
         if target.stat().st_size > limit:

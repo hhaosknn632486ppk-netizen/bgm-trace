@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-from scipy.signal import correlate, butter, sosfiltfilt
+from scipy.signal import correlate, butter, resample_poly, sosfiltfilt
 
 from .media import TraceError, digest, read_mono, run_ffmpeg, save_json
 
@@ -28,41 +28,90 @@ def ncc(reference: np.ndarray, query: np.ndarray) -> np.ndarray:
     return np.clip(values, -1., 1.)
 
 
-def _score_rate(query: np.ndarray, reference: np.ndarray, rate: int, speed: float, starts: list[float], window: float) -> dict:
-    sped = np.interp(np.arange(0., len(reference), speed), np.arange(len(reference)), reference)
+def _envelope(signal: np.ndarray, hop: int) -> np.ndarray:
+    frames = len(signal) // hop
+    if frames < 2:
+        return np.array([], dtype=np.float64)
+    framed = signal[:frames * hop].reshape(frames, hop)
+    return np.sqrt(np.mean(framed * framed, axis=1))
+
+
+def _resample_speed(reference_2x: np.ndarray, orig_len: int, rate: int, speed: float, bandpass_sos: np.ndarray, unit_bp: np.ndarray) -> np.ndarray:
+    if abs(speed - 1.) < 1e-12:
+        return unit_bp
+    source = reference_2x
+    if speed > 1.:
+        # Anti-alias before time compression so frequencies above the new Nyquist do not fold back.
+        cutoff = .48 * rate / speed
+        if 0 < cutoff < rate:
+            anti_alias = butter(6, cutoff, btype="lowpass", fs=2 * rate, output="sos")
+            source = sosfiltfilt(anti_alias, source)
+    positions = np.arange(0., orig_len, speed) * 2.
+    sped = np.interp(positions, np.arange(len(source)), source)
+    if len(sped) < 32:
+        return sped
+    return sosfiltfilt(bandpass_sos, sped)
+
+
+def _score_curves(query: np.ndarray, sped: np.ndarray, rate: float, speed: float, starts: list[float], window: float) -> dict:
     length = round(window * rate)
-    if len(sped) < length:
-        return {"speed": speed, "quality": 0., "search_strength": 0., "windows": [], "offset_spread_seconds": 1e9, "median_correlation": 0.}
+    if length < 2 or len(sped) < length:
+        return {"speed": speed, "quality": 0., "search_strength": 0., "windows": [], "offset_spread_seconds": 1e9, "median_correlation": 0., "timing_ambiguous": False}
     curves = []
     for start in starts:
-        clip = query[round(start * rate):round(start * rate) + length]
+        s = round(start * rate)
+        clip = query[s:s + length]
         if len(clip) != length or np.std(clip) < 1e-7:
             continue
         scores = np.abs(ncc(sped, clip))
         percentile = float(np.quantile(scores[::max(1, len(scores) // 10000)], .99))
-        curves.append((start, scores, percentile))
-    # Search one common placement across all windows. An independent global peak
-    # can land on an earlier repeated motif, even when the full excerpt aligns.
-    common_length = min((len(scores) - round(start * rate) for start, scores, _ in curves), default=0)
+        curves.append((start, s, scores, percentile))
+    # Search one common placement across windows, allowing negative offsets (BGM entering after
+    # query start) and partial tail/head coverage as long as at least two windows overlap.
     matches = []
     ambiguous = False
-    if common_length > 0:
-        joint = np.mean([np.log(np.maximum(scores[round(start * rate):round(start * rate) + common_length], 1e-8)) for start, scores, _ in curves], axis=0)
-        common = int(np.argmax(joint))
-        best_joint = float(np.exp(joint[common]))
-        distant = np.ones(common_length, dtype=bool)
-        distant[max(0, common - rate):min(common_length, common + rate + 1)] = False
-        second_joint = float(np.exp(np.max(joint[distant]))) if distant.any() else 0.
-        ambiguous = best_joint > 0 and second_joint >= .95 * best_joint
-        for start, scores, percentile in curves:
-            expected = common + round(start * rate)
-            lower, upper = max(0, expected - round(.25 * rate)), min(len(scores), expected + round(.25 * rate) + 1)
-            index = lower + int(np.argmax(scores[lower:upper]))
-            matches.append({"query_start_seconds": start, "reference_start_seconds": index / rate * speed, "reference_base_seconds": (index / rate - start) * speed, "absolute_ncc": float(scores[index]), "peak_to_p99_ratio": float(scores[index]) / max(percentile, 1e-10), "unconstrained_reference_start_seconds": int(np.argmax(scores)) / rate * speed})
+    min_windows = min(2, len(curves))
+    if curves:
+        ordered = sorted(curves, key=lambda item: item[1])
+        offsets = [item[1] for item in ordered]
+        score_len = len(ordered[0][2])
+        c_min = -offsets[-2] if len(ordered) >= 2 else -offsets[0]
+        c_max = score_len - (offsets[1] if len(ordered) >= 2 else offsets[0])
+        if c_max > c_min:
+            span = c_max - c_min
+            log_sum = np.zeros(span, dtype=np.float64)
+            valid_count = np.zeros(span, dtype=np.int32)
+            for _, s, scores, _ in ordered:
+                lo = max(c_min, -s)
+                hi = min(c_max, len(scores) - s)
+                if hi > lo:
+                    log_sum[lo - c_min:hi - c_min] += np.log(np.maximum(scores[lo + s:hi + s], 1e-8))
+                    valid_count[lo - c_min:hi - c_min] += 1
+            usable = valid_count >= min_windows
+            if usable.any():
+                geom_log = np.full(span, -np.inf, dtype=np.float64)
+                geom_log[usable] = log_sum[usable] / valid_count[usable]
+                selection = np.where(usable, geom_log + .05 * (valid_count - min_windows), -np.inf)
+                best_idx = int(np.argmax(selection))
+                common = c_min + best_idx
+                best_joint = float(np.exp(geom_log[best_idx]))
+                guard = max(1, round(rate))
+                distant = usable.copy()
+                distant[max(0, best_idx - guard):min(span, best_idx + guard + 1)] = False
+                second_joint = float(np.exp(np.max(geom_log[distant]))) if distant.any() else 0.
+                ambiguous = best_joint > 0 and second_joint >= .95 * best_joint
+                half_search = max(1, round(.25 * rate))
+                for start, s, scores, percentile in ordered:
+                    expected = common + s
+                    if not 0 <= expected < len(scores):
+                        continue
+                    lower, upper = max(0, expected - half_search), min(len(scores), expected + half_search + 1)
+                    index = lower + int(np.argmax(scores[lower:upper]))
+                    matches.append({"query_start_seconds": start, "reference_start_seconds": index / rate * speed, "reference_base_seconds": (index / rate - start) * speed, "absolute_ncc": float(scores[index]), "peak_to_p99_ratio": float(scores[index]) / max(percentile, 1e-10), "unconstrained_reference_start_seconds": int(np.argmax(scores)) / rate * speed})
     bases = [item["reference_base_seconds"] for item in matches]
     strength = float(np.median([m["absolute_ncc"] for m in matches])) if matches else 0.
     spread = float(np.ptp(bases)) if bases else 1e9
-    search_strength = float(np.median([np.max(scores) for _, scores, _ in curves])) if curves else 0.
+    search_strength = float(np.median([np.max(scores) for _, _, scores, _ in curves])) if curves else 0.
     return {"speed": speed, "quality": strength / (1 + spread), "search_strength": search_strength, "windows": matches, "offset_spread_seconds": spread, "median_correlation": strength, "timing_ambiguous": ambiguous}
 
 
@@ -84,25 +133,51 @@ def align_arrays(query: np.ndarray, reference: np.ndarray, sample_rate: int = 40
     if len(starts) < 2:
         starts = [0., seconds - window]
     # A bounded band emphasizes musical detail and suppresses rumble/DC.
+    # Resample reference before applying the shared bandpass so shifted bands align.
     sos = butter(4, [120, min(1700, sample_rate * .45)], btype="bandpass", fs=sample_rate, output="sos")
-    query = sosfiltfilt(sos, query)
-    reference = sosfiltfilt(sos, reference)
+    query_bp = sosfiltfilt(sos, query)
+    ref_bp_unit = sosfiltfilt(sos, reference)
+    ref_2x = resample_poly(reference, 2, 1) if speed_max > speed_min or abs(speed_min - 1.) >= 1e-12 else reference
+    orig_len = len(reference)
+
+    def evaluate(speed: float, win: float) -> dict:
+        sped = _resample_speed(ref_2x, orig_len, sample_rate, speed, sos, ref_bp_unit)
+        return _score_curves(query_bp, sped, sample_rate, speed, starts, win)
+
     grid = np.arange(speed_min, speed_max + speed_step * .1, speed_step)
     if speed_min <= 1. <= speed_max:
         grid = np.unique(np.r_[grid, 1.])
-    # Short windows tolerate the initial coarse speed error. Refinement increases
-    # duration before the final full-window evidence decision.
-    coarse_window = min(window, 1.) if speed_max > speed_min else window
-    evaluations = [_score_rate(query, reference, sample_rate, float(speed), starts, coarse_window) for speed in grid]
-    best = max(evaluations, key=lambda row: row["search_strength"])
-    if speed_max > speed_min:
-        radius = speed_step
-        for stage in range(3):
-            refined = np.linspace(max(speed_min, best["speed"] - radius), min(speed_max, best["speed"] + radius), 9)
-            search_window = window if stage == 2 else min(window, 1.5 * (stage + 1))
-            evaluations = [_score_rate(query, reference, sample_rate, float(speed), starts, search_window) for speed in refined]
-            best = max(evaluations, key=lambda row: row["search_strength"])
-            radius /= 4
+    if speed_max == speed_min:
+        evaluations = [evaluate(float(speed_min), window)]
+    else:
+        # Combine envelope NCC (tolerant of grid-midpoint phase slip) with short-window waveform NCC.
+        env_hop = max(1, round(sample_rate / 50))
+        env_rate = sample_rate / env_hop
+        query_env = _envelope(query_bp, env_hop)
+        coarse_window = min(window, .5)
+        coarse_env, coarse_wave = [], []
+        for speed in grid:
+            s = float(speed)
+            sped = _resample_speed(ref_2x, orig_len, sample_rate, s, sos, ref_bp_unit)
+            coarse_wave.append(_score_curves(query_bp, sped, sample_rate, s, starts, coarse_window))
+            coarse_env.append(_score_curves(query_env, _envelope(sped, env_hop), env_rate, s, starts, window))
+        env_best = max(coarse_env, key=lambda row: row["quality"])["speed"]
+        wave_best = max(coarse_wave, key=lambda row: row["search_strength"])["speed"]
+        seeds = [env_best]
+        if abs(wave_best - env_best) > speed_step * .5:
+            seeds.append(wave_best)
+        evaluations = []
+        for seed in seeds:
+            center = seed
+            radius = speed_step
+            stage_evals = []
+            for stage in range(3):
+                refined = np.linspace(max(speed_min, center - radius), min(speed_max, center + radius), 9)
+                search_window = window if stage == 2 else min(window, 1.5 * (stage + 1))
+                stage_evals = [evaluate(float(speed), search_window) for speed in refined]
+                center = max(stage_evals, key=lambda row: row["quality"] if stage == 2 else row["search_strength"])["speed"]
+                radius /= 4
+            evaluations.extend(stage_evals)
     best = max(evaluations, key=lambda row: row["quality"])
     hits = best["windows"]
     strong = [hit for hit in hits if hit["absolute_ncc"] >= .12 and hit["peak_to_p99_ratio"] >= 1.5]

@@ -101,12 +101,23 @@ def inspect_audio(path: Path) -> dict:
         raise TraceError("Library import expects audio, not a video or encrypted asset.")
     with path.open("rb") as stream:
         magic = stream.read(64)
+        payload_magic = magic[:4]
+        if magic[:3] == b"ID3" and len(magic) >= 10 and all(byte < 0x80 for byte in magic[6:10]):
+            id3_size = ((magic[6] & 0x7F) << 21) | ((magic[7] & 0x7F) << 14) | ((magic[8] & 0x7F) << 7) | (magic[9] & 0x7F)
+            offset = 10 + id3_size + (10 if magic[5] & 0x10 else 0)
+            stream.seek(offset)
+            payload_magic = stream.read(4)
+    has_mp3_sync = len(payload_magic) >= 2 and payload_magic[0] == 0xFF and (payload_magic[1] & 0xE0) == 0xE0
+    has_adts_sync = len(payload_magic) >= 2 and payload_magic[0] == 0xFF and (payload_magic[1] & 0xF6) == 0xF0
     formats = [(magic[4:8] == b"ftyp", ".m4a", "M4A"),
                (magic[:4] == b"fLaC", ".flac", "FLAC"),
                (magic[:4] in {b"RIFF", b"RF64"} and magic[8:12] == b"WAVE", ".wav", "WAVE"),
+               (magic[:4] == b"OggS" and (audio[1] == "opus" or b"OpusHead" in magic), ".opus", "Ogg Opus"),
                (magic[:4] == b"OggS", ".ogg", "Ogg"),
-               (audio[1] == "mp3", ".mp3", "MP3"),
-               (audio[1] == "aac" and magic[:1] == b"\xff", ".aac", "ADTS AAC")]
+               (magic[:4] == b"\x1a\x45\xdf\xa3" and b"webm" in magic.lower(), ".webm", "WebM"),
+               (magic[:4] == b"\x1a\x45\xdf\xa3", ".mka", "Matroska"),
+               (audio[1] == "mp3" and (magic[:3] == b"ID3" or has_mp3_sync), ".mp3", "MP3"),
+               (audio[1] == "aac" and has_adts_sync, ".aac", "ADTS AAC")]
     detected = next(((suffix, container) for valid, suffix, container in formats if valid), None)
     if detected is None:
         raise TraceError("Unsupported native audio container; use the app's ordinary audio export.")

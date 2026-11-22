@@ -61,3 +61,43 @@ def test_missing_duration_and_nan_are_rejected():
         align_arrays(np.ones(100), np.ones(40000))
     with pytest.raises(ValueError):
         align_arrays(np.full(20000, np.nan), np.ones(40000))
+
+
+def test_grid_midpoint_speed_with_high_frequency_signal():
+    rate, start, duration, speed = 4000, 6.5, 28, 1.025
+    rng = np.random.default_rng(23)
+    t = np.arange(48 * rate) / rate
+    envelope = .4 + .6 * np.maximum(0., np.sin(2 * np.pi * 1.7 * t) + .5 * np.cos(2 * np.pi * 2.9 * t))
+    reference = sosfiltfilt(butter(4, [600, 1500], fs=rate, btype="bandpass", output="sos"), rng.normal(size=len(t)) * envelope)
+    query = np.interp(start * rate + np.arange(duration * rate) * speed, np.arange(len(reference)), reference)
+    result = align_arrays(query, reference, speed_min=.94, speed_max=1.06, speed_step=.01)
+    assert result["evidence_passed"], result
+    assert result["speed_factor"] == pytest.approx(speed, abs=.001)
+    assert result["reference_start_seconds"] == pytest.approx(start, abs=.05)
+
+
+def test_high_speed_alignment_avoids_aliasing():
+    rate, start, duration, speed = 4000, 5.0, 24, 1.5
+    rng = np.random.default_rng(31)
+    reference = rng.normal(size=54 * rate)
+    # Build ground truth from an anti-aliased high-rate representation.
+    from scipy.signal import resample_poly
+    ref_hi = resample_poly(reference, 2, 1)
+    anti = butter(6, .45 * rate / speed, btype="lowpass", fs=2 * rate, output="sos")
+    ref_clean = sosfiltfilt(anti, ref_hi)
+    query = np.interp((start * rate + np.arange(duration * rate) * speed) * 2., np.arange(len(ref_clean)), ref_clean)
+    result = align_arrays(query, reference, speed_min=1.35, speed_max=1.65, speed_step=.05)
+    assert result["evidence_passed"], result
+    assert result["speed_factor"] == pytest.approx(speed, abs=.002)
+    assert result["reference_start_seconds"] == pytest.approx(start, abs=.05)
+
+
+def test_bgm_entering_after_query_start_aligns_with_negative_offset():
+    rate, intro = 4000, 4.0
+    reference = recording(41, 40, rate)
+    unrelated = recording(42, int(intro), rate)
+    query = np.r_[unrelated, reference[:26 * rate]]
+    result = align_arrays(query, reference, speed_min=1., speed_max=1.)
+    assert result["evidence_passed"], result
+    assert result["reference_start_seconds"] == pytest.approx(-intro, abs=.05)
+    assert len(result["windows"]) >= 2

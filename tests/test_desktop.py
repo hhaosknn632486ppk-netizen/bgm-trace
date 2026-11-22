@@ -66,3 +66,34 @@ def test_outside_and_covered_clicks_send_no_input(tmp_path):
     desktop.owner = lambda handle: 999
     with pytest.raises(TraceError, match="covers"):
         desktop.act(args, frame)
+
+
+def test_missing_key_does_not_dispatch_enter(tmp_path):
+    _, frame = observation(tmp_path)
+    desktop = object.__new__(WindowsDesktop)
+    desktop.send = lambda item: pytest.fail("Missing --key must not dispatch Enter")
+    with pytest.raises(TraceError, match="--key"):
+        desktop.act(SimpleNamespace(action="key", key=None), frame)
+
+
+def test_invalid_action_args_do_not_consume_observation(tmp_path, monkeypatch):
+    import sys
+    from bgm_trace import desktop as desktop_mod
+
+    path, _ = observation(tmp_path)
+    class FakeDesktop:
+        def validate(self, frame):
+            pass
+        def act(self, args, frame):
+            pytest.fail("Invalid arguments must not dispatch actions")
+
+    monkeypatch.setattr(desktop_mod.os, "name", "nt")
+    monkeypatch.setitem(sys.modules, "bgm_trace.windows_desktop", SimpleNamespace(WindowsDesktop=FakeDesktop))
+    for args in [
+        SimpleNamespace(action="key", frame=path, key=None),
+        SimpleNamespace(action="click", frame=path, x=None, y=10),
+        SimpleNamespace(action="click", frame=path, x=1500, y=10),
+    ]:
+        with pytest.raises(TraceError):
+            desktop_mod.run(args)
+        assert not path.with_suffix(".json.used").exists()

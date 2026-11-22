@@ -63,7 +63,15 @@ def run(args) -> int:
             raise TraceError("An action requires a freshly captured, visually inspected --frame JSON.")
         if args.action == "type" and (not args.text or len(args.text) > 200 or any(ord(c) < 32 or ord(c) == 127 for c in args.text)):
             raise TraceError("Provide a literal search term of 1-200 characters without control characters.")
+        if args.action == "key" and args.key not in {"Enter", "Escape", "SelectAll"}:
+            raise TraceError("The key action requires --key (Enter, Escape, or SelectAll).")
+        if args.action == "click" and (args.x is None or args.y is None):
+            raise TraceError("The click action requires --x and --y coordinates.")
         frame = read_observation(args.frame)
+        if args.action == "click":
+            _, _, width, height = frame["bounds"]
+            if not 0 <= args.x < width or not 0 <= args.y < height:
+                raise TraceError("Click is outside the observed window.")
         desktop.validate(frame)
         # Exclusive marker: one input action per observation, including failed attempts.
         with args.frame.with_suffix(args.frame.suffix + ".used").open("xb"):

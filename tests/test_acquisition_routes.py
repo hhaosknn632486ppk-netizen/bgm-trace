@@ -168,3 +168,36 @@ def test_successful_primary_input_skips_all_alternatives(tmp_path, monkeypatch, 
     assert cli.main(["identify", str(recording), "--alternate-input", str(broken), "--offline",
                      "--separate", "never", "--out", str(tmp_path / "job")]) == 0
     assert calls == [str(recording)]
+
+
+def test_ytdlp_guards_none_progress_playlists_and_prefers_requested_filepath(tmp_path, monkeypatch, recording):
+    import yt_dlp
+
+    captured = {}
+    actual_file = tmp_path / "job" / "acquire-yt-dlp" / "download.wav"
+
+    class Downloader:
+        def __init__(self, options):
+            captured["options"] = options
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def extract_info(self, url, download):
+            # Progress dict may contain downloaded_bytes=None; guard must not crash.
+            captured["options"]["progress_hooks"][0]({"downloaded_bytes": None})
+            shutil.copyfile(recording, actual_file)
+            return {
+                "title": "Synthetic track",
+                "webpage_url": "https://example.com/watch?v=abc",
+                "requested_downloads": [{"filepath": str(actual_file)}],
+            }
+        def prepare_filename(self, info):
+            return str(actual_file.with_suffix(".webm"))
+
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", Downloader)
+    source, info = media.acquire("https://example.com/watch?v=abc", tmp_path / "job")
+    assert source == actual_file and info["kind"] == "yt-dlp"
+    # Playlist entry triggers AcquisitionStop inside match_filter before downloading.
+    with pytest.raises(media.AcquisitionStop, match="Playlists"):
+        captured["options"]["match_filter"]({"playlist_autonumber": 1}, incomplete=False)

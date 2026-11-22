@@ -256,9 +256,14 @@ class WindowsDesktop:
             if args.submit:
                 self.key(13)
                 self.key(13, 2)
-        elif args.key == "SelectAll":
-            self.select_all()
+        elif args.action == "key":
+            if args.key == "SelectAll":
+                self.select_all()
+            elif args.key in {"Escape", "Enter"}:
+                code = 27 if args.key == "Escape" else 13
+                self.key(code)
+                self.key(code, 2)
+            else:
+                raise TraceError("The key action requires --key (Enter, Escape, or SelectAll).")
         else:
-            code = 27 if args.key == "Escape" else 13
-            self.key(code)
-            self.key(code, 2)
+            raise TraceError(f"Unsupported desktop action: {args.action}")
