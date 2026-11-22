@@ -67,6 +67,33 @@ def test_another_audio_format_is_used_when_top_stream_fails(tmp_path, monkeypatc
     assert info["audio_id"] == 2 and media.digest(source) == media.digest(recording)
 
 
+def test_identify_tries_backup_when_primary_cannot_extract_the_requested_interval(tmp_path, monkeypatch, recording):
+    metadata_api(monkeypatch, [{"id": 1, "baseUrl": "https://cdn.example/short",
+                               "backup_url": ["https://cdn.example/complete"]}])
+    short = tmp_path / "short.wav"
+    samples, rate = sf.read(recording)
+    sf.write(short, samples[:3 * rate], rate)
+    calls = []
+
+    def download(url, target, *args):
+        calls.append(url)
+        shutil.copyfile(short if url.endswith("/short") else recording, target)
+
+    async def no_recognition_matches(*args):
+        return []
+
+    monkeypatch.setattr(media, "_download", download)
+    monkeypatch.setattr(cli, "recognize_file", no_recognition_matches)
+    job = tmp_path / "job"
+    assert cli.main(["identify", VIDEO, "--start", "4", "--duration", "4", "--online",
+                     "--separate", "never", "--clues", "never", "--out", str(job)]) == 0
+    assert calls == ["https://cdn.example/short", "https://cdn.example/complete"]
+    report = json.loads((job / "report.json").read_text(encoding="utf-8"))
+    assert [row["status"] for row in report["source"]["stream_attempts"]] == ["failed", "ready"]
+    assert report["audio_preparation"]["selected_input_index"] == 0
+    assert sf.info(job / "source.wav").duration == pytest.approx(4, abs=.01)
+
+
 def test_missing_standalone_audio_falls_back_to_a_combined_video(tmp_path, monkeypatch, recording):
     import yt_dlp
     combined = tmp_path / "combined.mp4"

@@ -36,6 +36,8 @@ def read_observation(path: Path) -> dict:
 
 
 def run(args) -> int:
+    if args.action == "key" and args.key is None:
+        raise TraceError("The key action requires --key Enter, Escape or SelectAll.")
     if os.name != "nt":
         raise TraceError("The experimental Jianying desktop helper requires Windows. Local library import/collection remain cross-platform.")
     from .windows_desktop import WindowsDesktop
