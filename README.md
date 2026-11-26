@@ -14,6 +14,8 @@ Version 0.3 actively pursues alternate acquisition routes: public Bilibili backu
 
 **Version 0.4 completes the comment → music-library → local file → verification workflow.** It receives ordinary library downloads, corrects misleading file extensions without re-encoding native audio, and verifies a selected video passage. An experimental Windows helper enables an agent to observe and operate Jianying's normal music search UI. See the [Jianying case](docs/jianying-case.md) and the exact [automation boundary](skills/bgm-trace/references/jianying-desktop.md).
 
+The skill also supports [finding full recordings across platforms](skills/bgm-trace/references/full-recording.md): prioritize a user's preferred service, distinguish similar release titles and durations, check complete downloaded audio, and compare it against an official preview. Search and acquisition use available host tools; no universal catalog API or subscription entitlement is assumed. See the [Jeremy Brauns case](docs/full-recording-case.md), including the separate NetEase acquisition and Kugou catalog check.
+
 ## Install
 
 Python 3.10+ is required. From a downloaded/cloned checkout:

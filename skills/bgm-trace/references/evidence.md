@@ -8,4 +8,5 @@
 - Provider errors and rate limits are not negative identification evidence. A rate limit stops subsequent requests in that job. Retain the local artifacts and report the interruption instead of repeatedly submitting more windows.
 - The default rate search is 0.94–1.06. Widen it explicitly with `--speed-min` and `--speed-max` when warranted; the CLI accepts 0.5–2.0. This does not independently search pitch and tempo.
 - `export-reference` uses a local hash-bound reference, verifies interval coverage, and writes a provenance sidecar. It does not download a master or convert a lossy source into genuinely higher-quality audio.
+- Official-preview-to-full-track waveform agreement supports the checked overlap, not the unheard remainder, completeness or the identity of a trailer's original master. Check catalog edition/duration and fully decode the acquired file separately. A cover matching its own official preview remains a cover. See [full-recording.md](full-recording.md).
 - Reports omit absolute input paths and signed CDN parameters. They still include names, titles and IDs; review before sharing. Keep audio jobs out of the published skill/repository.

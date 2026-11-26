@@ -1,6 +1,12 @@
 # Validation status
 
-Updated on 2026-11-21. Older version sections preserve their original observation scope. These are executed checks, not a general music-identification accuracy claim.
+Updated on 2026-11-26. Older version sections preserve their original observation scope. These are executed checks, not a general music-identification accuracy claim.
+
+## Cross-platform full-recording workflow
+
+This update changes skill instructions, UI text and documentation; it adds no catalog adapter or verification algorithm. It includes the existing remote alignment/acquisition fixes before validation. The local Windows suite passed **128 tests**; skill structure, relative documentation links, `git diff --check`, and source/wheel builds passed. The source archive includes the new workflow and excludes commercial media/model files.
+
+The documented official-preview-to-full-track CLI command was executed on the retained private case audio: three six-second windows passed, median absolute NCC **0.964**, timing unambiguous. This checks the overlapping recording, not the unheard ending or cover quality. Live NetEase acquisition and Kugou catalog lookup are separate observations described in the [case report](full-recording-case.md); no account-specific membership or lossless-download test was performed. Catalog search remains a host-tool workflow. Consult the actual CI run for remote platform results.
 
 ## Version 0.5 voice routing and lyric drafts
 

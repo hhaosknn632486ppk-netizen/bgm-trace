@@ -26,6 +26,8 @@ python scripts/bgm_trace_cli.py identify ORIGINAL_URL --alternate-input ALTERNAT
 
 Up to four alternates are attempted in order only if earlier acquisition/decoding fails. Failed downloads/extractions stay in separate input folders. The same `--start` and `--duration` apply to every input, so use a separate job with appropriate timing for a differently edited clip or a full music track. Attach the original URL via `--source-url` and explain the relationship when using such a separate job. Offline mode requires all inputs to be local.
 
+For a named recording available only as a preview or on a blocked upload, continue with [full-recording.md](full-recording.md): cross-platform release search, edition disambiguation, complete-file checks and official-preview verification. The user's preferred subscription platform can be searched without assuming its catalog or entitlement matches another service.
+
 ## Playback capture and final handoff
 
 If an accessible player can play the music but downloading fails, and the host offers suitable playback/capture tools, capture only the intended passage with system audio. Verify the recording has audible content, then process it locally. The CLI has no built-in browser or audio recorder; do not describe capture as completed when the host lacks these tools. Do not request exported cookies or defeat access challenges. Use another accessible source or explain the remaining access gap.

@@ -14,6 +14,21 @@
 | [dsh-song-id](https://github.com/A-2788553793/dsh-song-id) | 已有视频链接、多片段、Shazam + 网易云双引擎。我们当前只有 Shazam，但增加本地人声分离和独立原曲核验。 |
 | [cuezy](https://github.com/onashia/cuezy) | 面向长混音的桌面识曲及曲目表导出。我们聚焦带对白的短视频，目前没有桌面界面。 |
 
+## 跨平台找完整版，并用官方试听核验
+
+已知候选曲名，但原发布页无法获取或只有短试听时，技能会继续查作者发布渠道和用户偏好的音乐平台，包括网易云、酷狗。按**完整曲名、艺人、专辑、版本后缀和时长**区分候选；下载后检查真实格式、完整解码和时长，再用官方试听做多段波形核验。
+
+这次案例中，Jeremy Brauns 的 `Avengers Doomsday (Trailer Music)` 是 **2:15**，用户要的 `Avengers Doomsday (Final Trailer)` 是 **3:00**。网易云取得的完整 MP3 与 Apple Music 官方试听重叠部分通过核验；酷狗随后也查到了准确的专辑条目。**曲库有收录、会员是否能下载、实际取得完整文件、录音比对通过，是四个不同结论。**
+
+```console
+# 官方短试听作为查询，取得的完整版作为参照；自动在完整版中定位试听。
+bgm-trace verify official-preview.m4a full-candidate.mp3 --out jobs/preview-to-full.json
+```
+
+试听匹配只支持检查到的重叠片段，不能证明没听到的结尾，也不能把翻奏当成预告原始母带。用户主要想听高潮时，保留完整版并另附标明起止时间的后段。若只是问某平台有没有，则给出核实的链接及版本信息即可。流程使用宿主搜索/浏览器及现有核验命令，没有新增通用曲库下载接口或会员自动操作。
+
+详见[完整技能流程](skills/bgm-trace/references/full-recording.md)和[此次案例及证据边界](docs/full-recording-case.md)。
+
 ## 快速开始
 
 需要 Python 3.10 或更高版本。在项目目录中执行：
